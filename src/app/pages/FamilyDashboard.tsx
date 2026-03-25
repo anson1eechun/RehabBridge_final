@@ -1,306 +1,259 @@
 // ============================================================
-// FamilyDashboard — 家屬端
-// Monitoring dashboard for family caregivers
-// Shows patient progress, compliance, alerts, angle trends
+// FamilyDashboard — 家屬端 (專業雙欄固定版)
 // ============================================================
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  ArrowLeft, Bell, Activity, CheckCircle, AlertTriangle,
-  TrendingUp, Calendar, Clock, Heart, ChevronRight, Info
+  ArrowLeft, Bell, Activity, CheckCircle, TrendingUp, 
+  Calendar, Heart, ChevronRight, X, MessageCircle, Award
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine, CartesianGrid, Legend
+  ResponsiveContainer, CartesianGrid, ReferenceLine
 } from 'recharts';
 import {
   mockPatients, mockSessionRecords, mockNotifications,
   mockAngleProgress, mockWeeklyActivity
 } from '../data/mockData';
+import { ChatWidget } from '../components/ChatWidget';
 
-const PATIENT = mockPatients[0];
+const PATIENT = mockPatients[0]; // 王大明
 const FAMILY_NAME = '王小美';
 
 export default function FamilyDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'alerts'>('overview');
-  const [unreadAlerts] = useState(mockNotifications.filter(n => !n.read).length);
+  const [isNotifyOpen, setIsNotifyOpen] = useState(false);
 
+  const unreadAlerts = mockNotifications.filter(n => !n.read).length;
   const recentSessions = mockSessionRecords
     .filter(s => s.patientId === PATIENT.id)
     .slice(0, 5);
 
   const lastSession = recentSessions[0];
-  const avgScore = Math.round(recentSessions.reduce((sum, s) => sum + s.score, 0) / recentSessions.length);
+  const avgScore = Math.round(recentSessions.reduce((sum, s) => sum + s.score, 0) / (recentSessions.length || 1));
 
   return (
-    <div className="min-h-screen" style={{ background: '#F4F7FC' }}>
-      {/* Top bar */}
-      <div style={{ background: 'linear-gradient(135deg, #26A69A 0%, #00897B 100%)', paddingBottom: 28 }}>
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
-          <button onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/75 hover:text-white transition-colors">
-            <ArrowLeft size={20} />
-            <span style={{ fontSize: 15 }}>返回</span>
-          </button>
-          <button className="relative p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
-            <Bell size={20} className="text-white" />
+    <div className="min-h-screen bg-[#F8FAFC]">
+      
+      {/* ── 彈出層：通知訊息面板 ── */}
+      <AnimatePresence>
+        {isNotifyOpen && (
+          <div className="fixed inset-0 z-[100] flex justify-end">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsNotifyOpen(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="relative w-80 bg-white h-full shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Bell size={20} className="text-teal-600" /> 最新通知
+                </h2>
+                <button onClick={() => setIsNotifyOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X size={20} className="text-gray-400" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {mockNotifications.map(note => (
+                  <div key={note.id} className={`p-4 rounded-2xl border ${note.read ? 'bg-gray-50' : 'bg-teal-50/30 border-teal-100'}`}>
+                    <p className="font-bold text-gray-800 text-sm">{note.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">{note.message}</p>
+                    <p className="text-[10px] text-gray-400 mt-2">{note.time}</p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 頂部橫幅 ── */}
+      <div className="bg-gradient-to-r from-teal-600 to-teal-800 pt-8 pb-16 px-8">
+        <div className="max-w-7xl mx-auto flex justify-between items-start">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white/70 hover:text-white mb-4 transition-colors">
+              <ArrowLeft size={18} /> <span>返回身分選擇</span>
+            </button>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold backdrop-blur-md border border-white/30">
+                {PATIENT.avatar}
+              </div>
+              <div>
+                <h1 className="text-white text-3xl font-bold">家屬守護面板</h1>
+                <p className="text-teal-100/60 text-sm mt-1">正在守護：{PATIENT.name}</p>
+              </div>
+            </div>
+          </motion.div>
+          
+          <button onClick={() => setIsNotifyOpen(true)} className="relative p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+            <Bell size={24} className="text-white" />
             {unreadAlerts > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-400 rounded-full flex items-center justify-center"
-                style={{ fontSize: 10, color: 'white', fontWeight: 700 }}>
+              <span className="absolute top-2 right-2 w-5 h-5 bg-red-500 rounded-full border-2 border-teal-700 text-[10px] flex items-center justify-center font-bold text-white">
                 {unreadAlerts}
               </span>
             )}
           </button>
         </div>
-
-        <div className="px-6 pt-3 pb-6">
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15 }}>歡迎，{FAMILY_NAME}</p>
-          <h1 style={{ color: 'white', fontSize: 26, fontWeight: 700, lineHeight: 1.2, marginTop: 2 }}>
-            {PATIENT.name} 的復健狀況
-          </h1>
-
-          {/* Status Chips */}
-          <div className="flex gap-3 mt-4 flex-wrap">
-            <span className="px-3 py-1 rounded-full text-xs font-semibold"
-              style={{ background: 'rgba(178,255,228,0.2)', color: '#B2FFCE' }}>
-              ● 活躍中
-            </span>
-            <span className="px-3 py-1 rounded-full text-xs"
-              style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.75)' }}>
-              主治：Dr. 陳志明
-            </span>
-          </div>
-        </div>
       </div>
 
-      <div className="px-5 pb-10" style={{ marginTop: -12 }}>
-        {/* Key Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-5">
-          {[
-            { label: '完成率', value: `${PATIENT.completionRate}%`, icon: CheckCircle, color: '#00897B', bg: '#E0F2F1' },
-            { label: '平均分數', value: `${avgScore}分`, icon: TrendingUp, color: '#1976D2', bg: '#E3F2FD' },
-            { label: '最高角度', value: `${lastSession?.maxAngle ?? 0}°`, icon: Activity, color: '#7B1FA2', bg: '#F3E5F5' },
-            { label: '連續天數', value: '7天', icon: Heart, color: '#C62828', bg: '#FFEBEE' },
-          ].map(stat => {
-            const Icon = stat.icon;
-            return (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl p-4 shadow-sm text-center"
-                style={{ background: 'white' }}
-              >
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center mx-auto mb-2"
-                  style={{ background: stat.bg }}>
-                  <Icon size={18} style={{ color: stat.color }} />
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: '#1A2035' }}>{stat.value}</div>
-                <div style={{ fontSize: 12, color: '#90A4AE' }}>{stat.label}</div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.05)' }}>
-          {[
-            { id: 'overview', label: '概覽' },
-            { id: 'history', label: '訓練記錄' },
-            { id: 'alerts', label: `通知 ${unreadAlerts > 0 ? `(${unreadAlerts})` : ''}` },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                background: activeTab === tab.id ? 'white' : 'transparent',
-                color: activeTab === tab.id ? '#00897B' : '#90A4AE',
-                boxShadow: activeTab === tab.id ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="flex flex-col gap-5">
-            {/* Angle Progress Chart */}
-            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1A2035' }}>膝蓋角度進展</h3>
-                  <p style={{ fontSize: 12, color: '#78909C' }}>近 7 天 · 目標 120°</p>
-                </div>
-                <div className="px-3 py-1 rounded-full text-xs font-semibold"
-                  style={{ background: '#E8F5E9', color: '#2E7D32' }}>
-                  +26° ↑ 進步中
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={160}>
-                <AreaChart data={mockAngleProgress} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="tealGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00897B" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#00897B" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" />
-                  <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[80, 130]} tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12 }}
-                    formatter={(val: number) => [`${val}°`, '角度']}
-                  />
-                  <ReferenceLine y={120} stroke="#FFB300" strokeDasharray="4 4" strokeWidth={1.5}
-                    label={{ value: '目標120°', fill: '#FFB300', fontSize: 11, position: 'right' }} />
-                  <Area type="monotone" dataKey="angle" stroke="#00897B" strokeWidth={2.5}
-                    fill="url(#tealGrad)" dot={{ fill: '#00897B', r: 4 }} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Weekly Activity */}
-            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1A2035', marginBottom: 4 }}>本週訓練活動</h3>
-              <p style={{ fontSize: 12, color: '#78909C', marginBottom: 16 }}>每日完成組數與時長</p>
-              <ResponsiveContainer width="100%" height={140}>
-                <BarChart data={mockWeeklyActivity} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12 }}
-                    labelStyle={{ color: '#90A4AE' }}
-                  />
-                  <Bar dataKey="sessions" name="訓練組數" fill="#00897B" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="score" name="分數" fill="#B2DFDB" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Latest Session */}
-            {lastSession && (
-              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock size={18} style={{ color: '#00695C' }} />
-                  <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1A2035' }}>最近一次訓練</h3>
-                  <span className="ml-auto text-sm" style={{ color: '#78909C' }}>{lastSession.date}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  {[
-                    { label: '持續時間', value: `${lastSession.duration}分鐘` },
-                    { label: '完成次數', value: `${lastSession.completedReps}次` },
-                    { label: '最高角度', value: `${lastSession.maxAngle}°` },
-                    { label: '平均角度', value: `${lastSession.avgAngle}°` },
-                    { label: '訓練分數', value: `${lastSession.score}分` },
-                    { label: '語音提示', value: `${lastSession.voiceFeedbackCount}次` },
-                  ].map(item => (
-                    <div key={item.label} className="rounded-xl p-3 text-center"
-                      style={{ background: '#F8FAFB' }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#1A2035' }}>{item.value}</div>
-                      <div style={{ fontSize: 11, color: '#78909C' }}>{item.label}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* History Tab */}
-        {activeTab === 'history' && (
-          <div className="flex flex-col gap-3">
-            {recentSessions.map((session, i) => (
-              <motion.div
-                key={session.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.06 }}
-                className="rounded-2xl p-4 shadow-sm flex items-center gap-4"
-                style={{ background: 'white' }}
-              >
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: session.score >= 85 ? '#E8F5E9' : session.score >= 70 ? '#FFF3E0' : '#FFEBEE' }}>
-                  <span style={{
-                    fontSize: 16, fontWeight: 700,
-                    color: session.score >= 85 ? '#2E7D32' : session.score >= 70 ? '#E65100' : '#C62828'
-                  }}>
-                    {session.score}
-                  </span>
-                </div>
-                <div className="flex-1">
-                  <div style={{ fontSize: 15, fontWeight: 600, color: '#1A2035' }}>{session.date}</div>
-                  <div style={{ fontSize: 13, color: '#78909C' }}>
-                    最高 {session.maxAngle}° · 完成 {session.completedReps}/{session.completedSets * 10}次 · {session.duration}分鐘
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div style={{
-                    fontSize: 13, fontWeight: 600,
-                    color: session.maxAngle >= session.targetAngle ? '#2E7D32' : '#E65100'
-                  }}>
-                    {session.maxAngle >= session.targetAngle ? '✓ 達標' : `差 ${session.targetAngle - session.maxAngle}°`}
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {/* Alerts Tab */}
-        {activeTab === 'alerts' && (
-          <div className="flex flex-col gap-3">
-            {mockNotifications.map((notif, i) => {
-              const colors = {
-                success: { bg: '#E8F5E9', border: '#A5D6A7', icon: '#2E7D32' },
-                warning: { bg: '#FFF3E0', border: '#FFCC02', icon: '#E65100' },
-                info: { bg: '#E3F2FD', border: '#90CAF9', icon: '#1565C0' },
-              };
-              const c = colors[notif.type as keyof typeof colors] ?? colors.info;
-              return (
-                <motion.div
-                  key={notif.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.06 }}
-                  className="rounded-2xl p-4 shadow-sm"
-                  style={{
-                    background: 'white',
-                    borderLeft: `4px solid ${c.border}`,
-                    opacity: notif.read ? 0.7 : 1,
-                  }}
+      {/* ── 主佈局區：雙欄排版 ── */}
+      <div className="max-w-7xl mx-auto px-8 -mt-10 pb-12">
+        <div className="flex flex-col lg:flex-row gap-8 items-start">
+          
+          {/* 左側：數據分析與頁籤 (佔據主要空間) */}
+          <div className="flex-1 space-y-6 w-full">
+            
+            {/* 核心指標卡片 */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: '完成率', value: `${PATIENT.completionRate}%`, icon: CheckCircle, color: '#00897B', bg: '#E0F2F1' },
+                { label: '平均分數', value: `${avgScore}`, icon: TrendingUp, color: '#1976D2', bg: '#E3F2FD' },
+                { label: '最高角度', value: `${lastSession?.maxAngle ?? 0}°`, icon: Activity, color: '#7B1FA2', bg: '#F3E5F5' },
+                { label: '連續天數', value: '7天', icon: Heart, color: '#C62828', bg: '#FFEBEE' },
+              ].map((stat, i) => (
+                <motion.div key={stat.label} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
+                  className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ background: c.bg }}>
-                      {notif.type === 'success' ? <CheckCircle size={16} style={{ color: c.icon }} /> :
-                       notif.type === 'warning' ? <AlertTriangle size={16} style={{ color: c.icon }} /> :
-                       <Info size={16} style={{ color: c.icon }} />}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span style={{ fontSize: 14, fontWeight: 600, color: '#1A2035' }}>{notif.title}</span>
-                        <span style={{ fontSize: 12, color: '#90A4AE' }}>{notif.time}</span>
-                      </div>
-                      <p style={{ fontSize: 13, color: '#546E7A', lineHeight: 1.5, marginTop: 3 }}>
-                        {notif.message}
-                      </p>
-                    </div>
-                    {!notif.read && (
-                      <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
-                    )}
+                  <div className="w-10 h-10 rounded-2xl flex items-center justify-center mx-auto mb-2" style={{ background: stat.bg }}>
+                    <stat.icon size={20} style={{ color: stat.color }} />
                   </div>
+                  <div className="text-xl font-bold text-gray-800 tabular-nums">{stat.value}</div>
+                  <div className="text-[11px] text-gray-400 font-bold uppercase tracking-wider">{stat.label}</div>
                 </motion.div>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* 頁籤切換 */}
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-2xl">
+              {['overview', 'history', 'alerts'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab as any)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === tab ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-400'}`}
+                >
+                  {tab === 'overview' ? '進度概覽' : tab === 'history' ? '訓練記錄' : `通知 (${unreadAlerts})`}
+                </button>
+              ))}
+            </div>
+
+            {/* 內容區：根據頁籤切換 */}
+            <AnimatePresence mode="wait">
+              <motion.div key={activeTab} initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -5 }} className="min-h-[400px]">
+                
+                {activeTab === 'overview' && (
+                  <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                      <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <TrendingUp size={18} className="text-teal-600" /> 膝蓋角度進展
+                      </h3>
+                      <div className="h-48 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={mockAngleProgress}>
+                            <defs>
+                              <linearGradient id="tealGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#00897B" stopOpacity={0.2} />
+                                <stop offset="95%" stopColor="#00897B" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                            <YAxis hide domain={['dataMin - 5', 'dataMax + 5']} />
+                            <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                            <Area type="monotone" dataKey="angle" stroke="#00897B" strokeWidth={3} fill="url(#tealGrad)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                      <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
+                        <Activity size={18} className="text-teal-600" /> 本週訓練活動
+                      </h3>
+                      <div className="h-40 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={mockWeeklyActivity}>
+                            <Bar dataKey="sessions" fill="#00897B" radius={[6, 6, 0, 0]} barSize={40} />
+                            <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
+                            <Tooltip cursor={{fill: '#F8FAFB'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'history' && (
+                  <div className="space-y-3">
+                    {recentSessions.map((session, i) => (
+                      <div key={session.id} className="bg-white p-5 rounded-2xl border border-gray-100 flex items-center gap-4 shadow-sm">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${session.score >= 85 ? 'bg-teal-50 text-teal-600' : 'bg-orange-50 text-orange-600'}`}>
+                          {session.score}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold text-gray-800">{session.date}</p>
+                          <p className="text-xs text-gray-400 mt-1">最高 {session.maxAngle}° · 完成 {session.completedReps}次 · {session.duration}分鐘</p>
+                        </div>
+                        <ChevronRight className="text-gray-300" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {activeTab === 'alerts' && (
+                  <div className="space-y-3">
+                    {mockNotifications.map(note => (
+                      <div key={note.id} className={`p-5 rounded-2xl border-l-4 bg-white shadow-sm ${note.type === 'warning' ? 'border-orange-400' : 'border-teal-400'}`}>
+                        <div className="flex justify-between mb-1">
+                          <span className="font-bold text-gray-800 text-sm">{note.title}</span>
+                          <span className="text-[10px] text-gray-400 font-bold">{note.time}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 leading-relaxed">{note.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
-        )}
+
+          {/* 右側：固定訊息面板 (Sticky Sidebar) */}
+          <div className="w-full lg:w-[400px] flex-shrink-0">
+            <div className="sticky top-6 space-y-6">
+              
+              {/* 聊天室 */}
+              <div className="bg-white rounded-[2.5rem] shadow-xl border border-teal-50 overflow-hidden h-[500px] flex flex-col">
+                <div className="p-6 bg-teal-600 text-white flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-lg">聯繫醫療團隊</h3>
+                    <p className="text-teal-100 text-xs">詢問關於 {PATIENT.name} 的狀況</p>
+                  </div>
+                  <MessageCircle size={24} className="opacity-80" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ChatWidget currentUserRole="family" currentUserId="F001" />
+                </div>
+              </div>
+
+              {/* 提醒卡片 */}
+              <div className="bg-gradient-to-br from-indigo-600 to-teal-700 p-6 rounded-[2.5rem] text-white shadow-lg relative overflow-hidden">
+                <Award className="absolute -bottom-4 -right-4 w-24 h-24 opacity-20" />
+                <div className="relative z-10">
+                  <p className="font-bold text-xl">全能守護者</p>
+                  <p className="text-white/80 text-sm mt-2 leading-relaxed">
+                    王大明 今天的訓練量已達標！陳醫師建議這兩天可以帶他去戶外走走，增加腿部耐力。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   );

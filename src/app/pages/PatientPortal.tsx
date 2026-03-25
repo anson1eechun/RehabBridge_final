@@ -1,19 +1,17 @@
 // ============================================================
-// PatientPortal — 長者端主頁
-// Shows today's exercises, progress, quick stats
-// Large fonts & touch targets for elderly usability
+// PatientPortal — 長者端主頁 (專業雙欄固定版)
 // ============================================================
-
+import { ChatWidget } from '../components/ChatWidget';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Activity, CheckCircle, Clock, Award, ChevronRight,
-  ArrowLeft, Bell, Calendar, Flame, Target, Play
+  ArrowLeft, Bell, Calendar, Flame, Target, Play, X
 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   mockPatients, mockPrescriptions, mockExercises,
-  mockSessionRecords, mockWeeklyActivity, mockAngleProgress
+  mockSessionRecords, mockAngleProgress
 } from '../data/mockData';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine
@@ -23,6 +21,8 @@ const PATIENT = mockPatients[0]; // 王大明
 
 export default function PatientPortal() {
   const navigate = useNavigate();
+  const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+
   const [greeting] = useState(() => {
     const h = new Date().getHours();
     if (h < 12) return '早安';
@@ -30,14 +30,18 @@ export default function PatientPortal() {
     return '晚安';
   });
 
-  // Get this patient's prescriptions → exercises
+  const notifications = [
+    { id: 1, title: '新處方', body: '陳醫師幫您新增了膝蓋彎曲訓練', time: '10分鐘前' },
+    { id: 2, title: '目標達成', body: '太棒了！您已經連續運動 7 天', time: '2小時前' },
+    { id: 3, title: '家屬關懷', body: '小美：爸，記得要做今天的復健喔！', time: '昨天' },
+  ];
+
   const prescriptions = mockPrescriptions.filter(p => p.patientId === PATIENT.id);
   const exercises = prescriptions.map(rx => ({
     ...rx,
     exercise: mockExercises.find(e => e.id === rx.exerciseId)!,
   }));
 
-  // Session records for today
   const today = new Date().toISOString().split('T')[0];
   const todaySessions = mockSessionRecords.filter(
     s => s.patientId === PATIENT.id && s.date === today
@@ -48,209 +52,177 @@ export default function PatientPortal() {
   const streakDays = 7;
 
   return (
-    <div className="min-h-screen" style={{ background: '#F4F7FC' }}>
-      {/* Top Bar */}
-      <div style={{ background: 'linear-gradient(135deg, #42A5F5 0%, #1976D2 100%)', paddingBottom: 32 }}>
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
-          <button
-            onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={20} />
-            <span style={{ fontSize: 15 }}>返回</span>
-          </button>
-          <button className="relative p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
-            <Bell size={20} className="text-white" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-400 rounded-full" />
-          </button>
-        </div>
-
-        <div className="px-6 pt-3 pb-8">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-          >
-            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 16 }}>{greeting}，</p>
-            <h1 style={{ color: 'white', fontSize: 30, fontWeight: 700, lineHeight: 1.2, marginTop: 2 }}>
-              {PATIENT.name}
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14, marginTop: 4 }}>
-              {PATIENT.diagnosis}
-            </p>
-          </motion.div>
-
-          {/* Quick Stats Row */}
-          <div className="grid grid-cols-3 gap-3 mt-6">
-            {[
-              { label: '今日完成', value: `${completedToday}/${totalToday}`, icon: CheckCircle, color: '#B9F6CA' },
-              { label: '連續天數', value: `${streakDays} 天`, icon: Flame, color: '#FFF9C4' },
-              { label: '完成率', value: `${PATIENT.completionRate}%`, icon: Target, color: '#E0F7FA' },
-            ].map(stat => {
-              const Icon = stat.icon;
-              return (
-                <div key={stat.label} className="rounded-2xl p-3 text-center" style={{ background: 'rgba(255,255,255,0.18)' }}>
-                  <Icon size={18} style={{ color: stat.color, margin: '0 auto 4px' }} />
-                  <div style={{ color: 'white', fontSize: 18, fontWeight: 700 }}>{stat.value}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>{stat.label}</div>
-                </div>
-              );
-            })}
+    <div className="min-h-screen bg-[#F8FAFC]">
+      
+      {/* ── 彈出層：通知面板 ── */}
+      <AnimatePresence>
+        {isNotifyOpen && (
+          <div className="fixed inset-0 z-[100] flex justify-end">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsNotifyOpen(false)}
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="relative w-80 bg-white h-full shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Bell size={20} className="text-blue-500" /> 最新通知
+                </h2>
+                <button onClick={() => setIsNotifyOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X size={20} className="text-gray-400" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {notifications.map(note => (
+                  <div key={note.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                    <p className="font-bold text-gray-800 text-sm">{note.title}</p>
+                    <p className="text-xs text-gray-500 mt-1">{note.body}</p>
+                    <p className="text-[10px] text-gray-400 mt-2">{note.time}</p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── 頂部橫幅 ── */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-800 pt-8 pb-16 px-8">
+        <div className="max-w-7xl mx-auto flex justify-between items-start">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white/70 hover:text-white mb-4 transition-colors">
+              <ArrowLeft size={18} /> <span>返回</span>
+            </button>
+            <p className="text-blue-100 text-lg">{greeting}，</p>
+            <h1 className="text-white text-4xl font-bold mt-1">{PATIENT.name}</h1>
+          </motion.div>
+          
+          <button 
+            onClick={() => setIsNotifyOpen(true)}
+            className="relative p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all"
+          >
+            <Bell size={24} className="text-white" />
+            <span className="absolute top-2 right-2 w-3 h-3 bg-red-500 rounded-full border-2 border-blue-700" />
+          </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="px-6 pb-10" style={{ marginTop: -16 }}>
-
-        {/* Today's Progress Bar */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-2xl p-5 mb-5 shadow-sm"
-          style={{ background: 'white' }}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Calendar size={18} style={{ color: '#1976D2' }} />
-              <span style={{ fontSize: 16, fontWeight: 600, color: '#1A2035' }}>今日訓練進度</span>
+      {/* ── 主佈覽區：雙欄排版 ── */}
+      <div className="max-w-7xl mx-auto px-8 -mt-10 pb-12">
+        <div className="flex flex-col lg:flex-row gap-8">
+          
+          {/* 左側：核心功能與圖表 (佔據 1 flex) */}
+          <div className="flex-1 space-y-6">
+            
+            {/* 數據小卡 */}
+            <div className="grid grid-cols-3 gap-4">
+              {[
+                { label: '今日完成', value: `${completedToday}/${totalToday}`, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
+                { label: '連續訓練', value: `${streakDays}天`, icon: Flame, color: 'text-orange-500', bg: 'bg-orange-50' },
+                { label: '完成率', value: `${PATIENT.completionRate}%`, icon: Target, color: 'text-blue-500', bg: 'bg-blue-50' },
+              ].map((s) => (
+                <div key={s.label} className={`${s.bg} p-4 rounded-3xl border border-white shadow-sm flex flex-col items-center`}>
+                  <s.icon className={s.color} size={24} />
+                  <span className="text-xl font-bold text-gray-800 mt-2 tabular-nums">{s.value}</span>
+                  <span className="text-xs text-gray-500">{s.label}</span>
+                </div>
+              ))}
             </div>
-            <span style={{ fontSize: 13, color: '#78909C' }}>
-              {new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric', weekday: 'short' })}
-            </span>
-          </div>
-          <div className="w-full rounded-full h-3" style={{ background: '#EEF2F7' }}>
-            <div
-              className="h-3 rounded-full transition-all duration-700"
-              style={{
-                width: `${(completedToday / totalToday) * 100}%`,
-                background: 'linear-gradient(90deg, #42A5F5, #1976D2)'
-              }}
-            />
-          </div>
-          <div className="flex justify-between mt-2">
-            <span style={{ fontSize: 13, color: '#78909C' }}>
-              已完成 {completedToday} 項
-            </span>
-            <span style={{ fontSize: 13, color: '#1976D2', fontWeight: 600 }}>
-              {Math.round((completedToday / totalToday) * 100)}%
-            </span>
-          </div>
-        </motion.div>
 
-        {/* Exercise List */}
-        <div className="mb-5">
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>
-            今日訓練計畫
-          </h2>
-          <div className="flex flex-col gap-3">
-            {exercises.map((item, index) => {
-              const ex = item.exercise;
-              if (!ex) return null;
-              const isDone = todaySessions.some(s => s.exerciseId === ex.id);
+            {/* 進度條卡片 */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+              <div className="flex justify-between items-end mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">今日進度</h3>
+                  <p className="text-gray-400 text-sm">再完成 {totalToday - completedToday} 項就達標囉！</p>
+                </div>
+                <span className="text-2xl font-black text-blue-600">{Math.round((completedToday / totalToday) * 100)}%</span>
+              </div>
+              <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                <motion.div 
+                  initial={{ width: 0 }} animate={{ width: `${(completedToday / totalToday) * 100}%` }}
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600"
+                />
+              </div>
+            </div>
 
-              return (
-                <motion.button
-                  key={item.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.15 + index * 0.08 }}
-                  onClick={() => navigate(`/patient/rehab/${ex.id}`)}
-                  className="w-full rounded-2xl p-5 text-left flex items-center gap-4 shadow-sm hover:shadow-md transition-all"
-                  style={{
-                    background: isDone ? '#F1F8E9' : 'white',
-                    border: isDone ? '1.5px solid #C8E6C9' : '1.5px solid #ECF0F4',
-                  }}
-                >
-                  {/* Status indicator */}
-                  <div
-                    className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: isDone ? '#E8F5E9' : '#EEF2F7' }}
+            {/* 訓練計畫清單 */}
+            <div className="space-y-4">
+              <h3 className="text-xl font-bold text-gray-800 ml-2">今日訓練計畫</h3>
+              {exercises.map((item, index) => {
+                const ex = item.exercise;
+                const isDone = todaySessions.some(s => s.exerciseId === ex.id);
+                return (
+                  <motion.button
+                    key={item.id}
+                    whileHover={{ x: 4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate(`/patient/rehab/${ex.id}`)}
+                    className={`w-full p-5 rounded-[1.5rem] flex items-center gap-4 transition-all shadow-sm ${isDone ? 'bg-green-50 border-green-100' : 'bg-white border-gray-100'} border`}
                   >
-                    {isDone
-                      ? <CheckCircle size={24} style={{ color: '#43A047' }} />
-                      : <Play size={24} style={{ color: '#1976D2' }} />
-                    }
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span style={{ fontSize: 17, fontWeight: 700, color: '#1A2035' }}>
-                        {ex.name}
-                      </span>
-                      <span
-                        className="px-2 py-0.5 rounded-full"
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          background: ex.difficulty === 'easy' ? '#E3F2FD' : ex.difficulty === 'medium' ? '#FFF3E0' : '#FCE4EC',
-                          color: ex.difficulty === 'easy' ? '#1565C0' : ex.difficulty === 'medium' ? '#E65100' : '#C62828',
-                        }}
-                      >
-                        {ex.difficulty === 'easy' ? '輕鬆' : ex.difficulty === 'medium' ? '中等' : '困難'}
-                      </span>
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isDone ? 'bg-white' : 'bg-blue-50'}`}>
+                      {isDone ? <CheckCircle className="text-green-500" /> : <Play className="text-blue-600" fill="currentColor" />}
                     </div>
-                    <p style={{ fontSize: 13, color: '#78909C', lineHeight: 1.4 }}>
-                      {item.sets} 組 × {item.reps} 次 · 目標 {item.targetAngle}°
-                    </p>
-                  </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-bold text-gray-800 text-lg">{ex.name}</p>
+                      <p className="text-gray-400 text-sm">{item.sets}組 x {item.reps}次 · 目標 {item.targetAngle}°</p>
+                    </div>
+                    <ChevronRight className="text-gray-300" />
+                  </motion.button>
+                );
+              })}
+            </div>
 
-                  <ChevronRight size={20} style={{ color: '#CFD8DC', flexShrink: 0 }} />
-                </motion.button>
-              );
-            })}
+            {/* 圖表卡片 */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2 mb-6">
+                <Activity className="text-blue-600" size={20} />
+                <h3 className="font-bold text-gray-800">復健趨勢</h3>
+              </div>
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={mockAngleProgress}>
+                    <defs>
+                      <linearGradient id="pColor" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="date" hide />
+                    <YAxis hide domain={['dataMin - 10', 'dataMax + 10']} />
+                    <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
+                    <Area type="monotone" dataKey="angle" stroke="#3B82F6" strokeWidth={3} fill="url(#pColor)" />
+                    <ReferenceLine y={115} stroke="#F59E0B" strokeDasharray="3 3" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
+
+          {/* 右側：固定訊息面板 (佔據 400px) */}
+          <div className="w-full lg:w-[400px] flex-shrink-0">
+            <div className="sticky top-6 space-y-6">
+              {/* 聊天室組件 */}
+              <div className="bg-white rounded-[2rem] shadow-xl border border-blue-50 overflow-hidden">
+                <ChatWidget currentUserRole="patient" currentUserId="P001" />
+              </div>
+
+              {/* 激勵卡片 */}
+              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[2rem] text-white shadow-lg">
+                <Award className="mb-4 opacity-80" size={32} />
+                <p className="font-bold text-xl">做得很好！</p>
+                <p className="text-blue-100 text-sm mt-2 leading-relaxed">
+                  您的膝蓋角度本週平均提升了 8°，這對恢復非常有幫助。繼續保持，您正在變強！
+                </p>
+              </div>
+            </div>
+          </div>
+
         </div>
-
-        {/* Angle Progress Chart */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="rounded-2xl p-5 shadow-sm mb-5"
-          style={{ background: 'white' }}
-        >
-          <div className="flex items-center gap-2 mb-4">
-            <Activity size={18} style={{ color: '#1976D2' }} />
-            <h3 style={{ fontSize: 16, fontWeight: 600, color: '#1A2035' }}>膝蓋角度進展（7天）</h3>
-          </div>
-          <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={mockAngleProgress} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="angleGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#42A5F5" stopOpacity={0.18} />
-                  <stop offset="95%" stopColor="#42A5F5" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-              <YAxis domain={[80, 130]} tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12 }}
-                labelStyle={{ color: '#90A4AE' }}
-                itemStyle={{ color: '#69F0AE' }}
-                formatter={(val: number) => [`${val}°`, '角度']}
-              />
-              <ReferenceLine y={120} stroke="#FFB300" strokeDasharray="4 4" strokeWidth={1.5} label={{ value: '目標', fill: '#FFB300', fontSize: 11, position: 'right' }} />
-              <Area type="monotone" dataKey="angle" stroke="#42A5F5" strokeWidth={2.5} fill="url(#angleGrad)" dot={{ fill: '#42A5F5', r: 4, strokeWidth: 0 }} activeDot={{ r: 6, fill: '#1976D2' }} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </motion.div>
-
-        {/* Encouragement */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.45 }}
-          className="rounded-2xl p-5 text-center"
-          style={{ background: 'linear-gradient(135deg, #E3F2FD, #E8F5E9)' }}
-        >
-          <Award size={28} style={{ color: '#1976D2', margin: '0 auto 8px' }} />
-          <p style={{ fontSize: 16, fontWeight: 600, color: '#1A2035' }}>做得很好！繼續保持！</p>
-          <p style={{ fontSize: 13, color: '#546E7A', marginTop: 4 }}>
-            膝蓋角度本週平均提升了 <strong style={{ color: '#1976D2' }}>8°</strong> 🎉
-          </p>
-        </motion.div>
       </div>
     </div>
   );

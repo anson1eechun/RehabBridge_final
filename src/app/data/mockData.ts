@@ -1,8 +1,8 @@
 // ============================================================
-// Mock Data — RehabBridge System
-// All data is static mock for prototype / development blueprint
+// Mock Data — RehabBridge System (Ultimate Edition with Messaging)
 // ============================================================
 
+// ─── 介面定義 (Interfaces) ──────────────────────────────────
 export interface Patient {
   id: string;
   name: string;
@@ -25,8 +25,9 @@ export interface Exercise {
   category: string;
   description: string;
   targetAngle: number;
+  restAngle: number;
   tolerance: number;
-  joints: [string, string, string]; // [p1, vertex, p2] keypoint names
+  joints: [number, number, number]; 
   reps: number;
   sets: number;
   holdSeconds: number;
@@ -35,7 +36,6 @@ export interface Exercise {
   voicePrompts: {
     start: string;
     tooLow: string;
-    tooHigh: string;
     achieved: string;
     complete: string;
   };
@@ -64,7 +64,7 @@ export interface SessionRecord {
   patientId: string;
   exerciseId: string;
   date: string;
-  duration: number;
+  duration: number; // 單位：分鐘
   completedSets: number;
   completedReps: number;
   avgAngle: number;
@@ -74,351 +74,160 @@ export interface SessionRecord {
   voiceFeedbackCount: number;
 }
 
-export interface Doctor {
+// 🌟 新增：物理治療師、家屬與通訊介面
+export interface Therapist {
   id: string;
   name: string;
   specialty: string;
   hospital: string;
-  department: string;
   avatar: string;
   patientCount: number;
 }
 
 export interface FamilyMember {
   id: string;
+  patientId: string;
   name: string;
   relation: string;
-  patientId: string;
   phone: string;
-  notificationsEnabled: boolean;
+  avatar: string;
 }
 
-// ─── Doctors ───────────────────────────────────────────────
-export const mockDoctors: Doctor[] = [
-  {
-    id: 'D001',
-    name: '陳志明',
-    specialty: '骨科復健',
-    hospital: '台大醫院',
-    department: '復健科',
-    avatar: 'D',
-    patientCount: 12,
-  },
-  {
-    id: 'D002',
-    name: '林美華',
-    specialty: '神經復健',
-    hospital: '台大醫院',
-    department: '神經科',
-    avatar: 'L',
-    patientCount: 8,
-  },
+export interface Message {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  senderRole: 'doctor' | 'patient' | 'family' | 'therapist';
+  content: string;
+  timestamp: string;
+  isRead: boolean;
+}
+
+// ─── 人物資料庫 (Users Data) ───────────────────────────────
+export const mockDoctors = [
+  { id: 'D001', name: '陳志明', specialty: '骨科復健', hospital: '台大醫院', department: '復健科', avatar: 'D', patientCount: 12 },
+  { id: 'D002', name: '林美華', specialty: '神經復健', hospital: '台大醫院', department: '神經科', avatar: 'L', patientCount: 8 },
 ];
 
-// ─── Patients ──────────────────────────────────────────────
+export const mockTherapists: Therapist[] = [
+  { id: 'T001', name: '黃建宏', specialty: '運動醫學與骨科復健', hospital: '台大醫院', avatar: '黃', patientCount: 15 },
+  { id: 'T002', name: '吳雅婷', specialty: '神經物理治療', hospital: '台大醫院', avatar: '吳', patientCount: 10 }
+];
+
 export const mockPatients: Patient[] = [
-  {
-    id: 'P001',
-    name: '王大明',
-    age: 72,
-    gender: '男',
-    diagnosis: '右膝退化性關節炎（第三期）',
-    doctorId: 'D001',
-    familyContact: '王小美（女兒）',
-    avatar: '王',
-    admissionDate: '2026-01-15',
-    completionRate: 85,
-    lastSessionDate: '2026-03-23',
-    status: 'active',
-  },
-  {
-    id: 'P002',
-    name: '李秀英',
-    age: 68,
-    gender: '女',
-    diagnosis: '左肩旋轉肌袖受傷術後復健',
-    doctorId: 'D001',
-    familyContact: '李建國（兒子）',
-    avatar: '李',
-    admissionDate: '2026-02-01',
-    completionRate: 72,
-    lastSessionDate: '2026-03-22',
-    status: 'active',
-  },
-  {
-    id: 'P003',
-    name: '張福壽',
-    age: 75,
-    gender: '男',
-    diagnosis: '腦中風後右側肢體復健',
-    doctorId: 'D002',
-    familyContact: '張明芳（配偶）',
-    avatar: '張',
-    admissionDate: '2026-01-08',
-    completionRate: 60,
-    lastSessionDate: '2026-03-21',
-    status: 'active',
-  },
-  {
-    id: 'P004',
-    name: '陳阿蘭',
-    age: 70,
-    gender: '女',
-    diagnosis: '髖關節置換術後復健',
-    doctorId: 'D001',
-    familyContact: '陳大偉（兒子）',
-    avatar: '陳',
-    admissionDate: '2026-03-01',
-    completionRate: 45,
-    lastSessionDate: '2026-03-20',
-    status: 'active',
-  },
+  { id: 'P001', name: '王大明', age: 72, gender: '男', diagnosis: '右膝退化性關節炎（第三期）', doctorId: 'D001', familyContact: '王小美', avatar: '王', admissionDate: '2026-01-15', completionRate: 85, lastSessionDate: '2026-03-24', status: 'active' },
+  { id: 'P002', name: '李秀英', age: 68, gender: '女', diagnosis: '左肩旋轉肌袖受傷術後', doctorId: 'D001', familyContact: '李建國', avatar: '李', admissionDate: '2026-02-01', completionRate: 72, lastSessionDate: '2026-03-22', status: 'active' },
+  { id: 'P003', name: '張福壽', age: 75, gender: '男', diagnosis: '腦中風後右側肢體偏癱', doctorId: 'D002', familyContact: '張明芳', avatar: '張', admissionDate: '2026-01-08', completionRate: 60, lastSessionDate: '2026-03-21', status: 'active' },
+  { id: 'P004', name: '陳阿蘭', age: 70, gender: '女', diagnosis: '全髖關節置換術後（左側）', doctorId: 'D001', familyContact: '陳大偉', avatar: '陳', admissionDate: '2026-03-01', completionRate: 45, lastSessionDate: '2026-03-20', status: 'active' },
 ];
 
-// ─── Exercises ─────────────────────────────────────────────
+export const mockFamilyMembers: FamilyMember[] = [
+  { id: 'F001', patientId: 'P001', name: '王小美', relation: '女兒', phone: '0912-345-678', avatar: '美' },
+  { id: 'F002', patientId: 'P002', name: '李建國', relation: '兒子', phone: '0922-333-444', avatar: '國' }
+];
+
+// ─── 7 大偵測動作 ──────────────────────────────────────────
 export const mockExercises: Exercise[] = [
   {
-    id: 'EX001',
+    id: 'knee_flexion',
     name: '膝蓋彎曲訓練',
     nameEn: 'Knee Flexion',
-    category: '下肢復健',
-    description: '坐姿訓練膝關節彎曲角度，增強股四頭肌與膕旁肌群柔軟度與力量',
-    targetAngle: 120,
-    tolerance: 10,
-    joints: ['right_hip', 'right_knee', 'right_ankle'],
-    reps: 10,
-    sets: 3,
-    holdSeconds: 3,
-    side: 'right',
-    guidanceSteps: [
-      '坐在椅子上，背部挺直',
-      '緩慢將膝蓋彎曲至最大角度',
-      '保持目標角度 3 秒',
-      '緩慢伸直回到起始位置',
-      '重複動作',
-    ],
-    voicePrompts: {
-      start: '請開始彎曲右膝蓋',
-      tooLow: '請繼續彎曲，還差一點點',
-      tooHigh: '很好！請稍微放鬆一些',
-      achieved: '很棒！已達到目標角度，請保持三秒',
-      complete: '這一組完成了！休息一下再繼續',
-    },
-    bodyArea: '膝蓋',
-    difficulty: 'medium',
+    category: '下肢',
+    description: '測量髖-膝-踝角度，增強膝關節活動度',
+    targetAngle: 110, restAngle: 170, tolerance: 10, joints: [23, 25, 27],
+    reps: 10, sets: 3, holdSeconds: 3, side: 'left',
+    guidanceSteps: ['坐姿挺直', '腳跟滑向椅子', '保持三秒'],
+    voicePrompts: { start: '請開始彎曲膝蓋', tooLow: '再往後縮一點', achieved: '很好，請保持', complete: '膝蓋訓練完成' },
+    bodyArea: '膝蓋', difficulty: 'easy'
   },
   {
-    id: 'EX002',
+    id: 'shoulder_abduction',
     name: '肩膀外展訓練',
     nameEn: 'Shoulder Abduction',
-    category: '上肢復健',
-    description: '站姿或坐姿將手臂側舉至肩膀高度，訓練三角肌與肩旋轉肌群',
-    targetAngle: 90,
-    tolerance: 10,
-    joints: ['right_hip', 'right_shoulder', 'right_elbow'],
-    reps: 12,
-    sets: 3,
-    holdSeconds: 2,
-    side: 'right',
-    guidanceSteps: [
-      '站立或坐姿，手臂自然垂放',
-      '緩慢將右手臂向側方抬起',
-      '目標：手臂與地面平行（90度）',
-      '保持姿勢 2 秒',
-      '緩慢放下回到起始位置',
-    ],
-    voicePrompts: {
-      start: '請開始側舉右手臂',
-      tooLow: '請繼續抬高手臂',
-      tooHigh: '很好！請稍微放低一些',
-      achieved: '完美！手臂已達到目標高度，請保持',
-      complete: '這一組完成！做得很好',
-    },
-    bodyArea: '肩膀',
-    difficulty: 'easy',
+    category: '上肢',
+    description: '測量髖-肩-肘角度，測試手臂平舉能力',
+    targetAngle: 90, restAngle: 20, tolerance: 10, joints: [23, 11, 13],
+    reps: 12, sets: 3, holdSeconds: 2, side: 'left',
+    guidanceSteps: ['手臂由側邊抬起', '與肩同高', '緩慢放下'],
+    voicePrompts: { start: '請向側邊抬起手臂', tooLow: '再抬高一點', achieved: '達到目標高度', complete: '肩膀訓練完成' },
+    bodyArea: '肩膀', difficulty: 'medium'
   },
-  {
-    id: 'EX003',
-    name: '手肘彎曲訓練',
-    nameEn: 'Elbow Flexion',
-    category: '上肢復健',
-    description: '訓練手肘彎曲角度，強化二頭肌，改善日常生活能力',
-    targetAngle: 90,
-    tolerance: 8,
-    joints: ['right_shoulder', 'right_elbow', 'right_wrist'],
-    reps: 15,
-    sets: 3,
-    holdSeconds: 2,
-    side: 'right',
-    guidanceSteps: [
-      '站立或坐姿，手臂自然垂放',
-      '保持上臂固定不動',
-      '緩慢將前臂向上彎曲',
-      '目標：手肘彎曲達 90 度',
-      '緩慢放下',
-    ],
-    voicePrompts: {
-      start: '請開始彎曲右手肘',
-      tooLow: '請繼續彎曲手肘',
-      tooHigh: '再放鬆一點點',
-      achieved: '非常好！請保持這個角度',
-      complete: '一組完成！休息後繼續',
-    },
-    bodyArea: '手肘',
-    difficulty: 'easy',
-  },
-  {
-    id: 'EX004',
-    name: '髖關節外展訓練',
-    nameEn: 'Hip Abduction',
-    category: '下肢復健',
-    description: '側臥或站立將腿部向外展開，強化外展肌群，改善步態穩定性',
-    targetAngle: 30,
-    tolerance: 8,
-    joints: ['left_knee', 'left_hip', 'right_hip'],
-    reps: 10,
-    sets: 3,
-    holdSeconds: 3,
-    side: 'left',
-    guidanceSteps: [
-      '站立，可扶牆保持平衡',
-      '重心移至右腳',
-      '緩慢將左腿向外側抬起',
-      '目標角度：30 度',
-      '保持 3 秒後放下',
-    ],
-    voicePrompts: {
-      start: '請開始側舉左腿',
-      tooLow: '請再抬高一點',
-      tooHigh: '請稍微放低一些',
-      achieved: '很好！保持這個高度三秒',
-      complete: '完成！換腿之前請休息一下',
-    },
-    bodyArea: '髖部',
-    difficulty: 'medium',
-  },
+  { id: 'elbow_flexion', name: '手肘彎曲訓練', nameEn: 'Elbow Flexion', category: '上肢', description: '強化二頭肌肌力', targetAngle: 130, restAngle: 30, tolerance: 8, joints: [11, 13, 15], reps: 15, sets: 3, holdSeconds: 2, side: 'left', guidanceSteps: ['上臂固定', '前臂向上彎曲'], voicePrompts: { start: '請開始彎曲手肘', tooLow: '再用力彎一點', achieved: '非常棒', complete: '手肘訓練完成' }, bodyArea: '手肘', difficulty: 'easy' },
+  { id: 'hip_abduction', name: '髖關節外展訓練', nameEn: 'Hip Abduction', category: '下肢', description: '強化步態穩定性', targetAngle: 35, restAngle: 5, tolerance: 5, joints: [24, 23, 25], reps: 10, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['腿部側向抬起', '骨盆保持水平'], voicePrompts: { start: '請向外側抬腿', tooLow: '請再抬高些', achieved: '維持平衡，很好', complete: '髖部訓練完成' }, bodyArea: '髖部', difficulty: 'medium' },
+  { id: 'leg_raise', name: '直腿抬舉訓練', nameEn: 'Leg Raise', category: '下肢', description: '訓練核心與股四頭肌', targetAngle: 45, restAngle: 5, tolerance: 5, joints: [11, 23, 25], reps: 10, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['平躺於墊子上', '膝蓋伸直抬起'], voicePrompts: { start: '請將整條腿抬起', tooLow: '腳不要彎', achieved: '高度正確', complete: '抬腿紀錄已儲存' }, bodyArea: '大腿', difficulty: 'medium' },
+  { id: 'squat', name: '靠牆深蹲訓練', nameEn: 'Wall Squat', category: '核心', description: '下蹲測量膝蓋彎曲，強化肌力', targetAngle: 100, restAngle: 170, tolerance: 10, joints: [23, 25, 27], reps: 8, sets: 2, holdSeconds: 5, side: 'bilateral', guidanceSteps: ['背部貼牆', '緩慢下蹲'], voicePrompts: { start: '請沿著牆壁蹲下', tooLow: '再深一點點', achieved: '保持住', complete: '深蹲組數完成' }, bodyArea: '全身', difficulty: 'hard' },
+  { id: 'side_leg_raise', name: '側面抬腿訓練', nameEn: 'Side Leg Raise', category: '下肢', description: '側臥強化中臀肌', targetAngle: 30, restAngle: 5, tolerance: 5, joints: [23, 24, 26], reps: 12, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['身體側向一邊', '上方腿部抬起'], voicePrompts: { start: '請開始側面抬腿', tooLow: '再高一公分', achieved: '很好', complete: '側面訓練結束' }, bodyArea: '髖部', difficulty: 'medium' }
 ];
 
-// ─── Prescriptions ─────────────────────────────────────────
+// ─── 詳細處方設定 (10 組處方) ────────────────────────────────
 export const mockPrescriptions: Prescription[] = [
-  {
-    id: 'RX001',
-    patientId: 'P001',
-    doctorId: 'D001',
-    exerciseId: 'EX001',
-    targetAngle: 120,
-    reps: 10,
-    sets: 3,
-    holdSeconds: 3,
-    frequency: '每天兩次',
-    notes: '術後第六週開始，初期若疼痛請停止，第八週目標達到130度',
-    startDate: '2026-02-15',
-    endDate: '2026-04-15',
-    active: true,
-  },
-  {
-    id: 'RX002',
-    patientId: 'P001',
-    doctorId: 'D001',
-    exerciseId: 'EX004',
-    targetAngle: 30,
-    reps: 10,
-    sets: 2,
-    holdSeconds: 3,
-    frequency: '每天一次',
-    notes: '搭配膝蓋彎曲訓練，注意髖部不要過度代償',
-    startDate: '2026-02-15',
-    endDate: '2026-04-15',
-    active: true,
-  },
-  {
-    id: 'RX003',
-    patientId: 'P002',
-    doctorId: 'D001',
-    exerciseId: 'EX002',
-    targetAngle: 90,
-    reps: 12,
-    sets: 3,
-    holdSeconds: 2,
-    frequency: '每天兩次',
-    notes: '旋轉肌術後第四週，避免超過90度以上的外展',
-    startDate: '2026-02-20',
-    endDate: '2026-05-01',
-    active: true,
-  },
-  {
-    id: 'RX004',
-    patientId: 'P002',
-    doctorId: 'D001',
-    exerciseId: 'EX003',
-    targetAngle: 90,
-    reps: 15,
-    sets: 3,
-    holdSeconds: 2,
-    frequency: '每天兩次',
-    notes: '強化二頭肌，搭配輕啞鈴訓練',
-    startDate: '2026-02-20',
-    endDate: '2026-05-01',
-    active: true,
-  },
+  { id: 'RX001', patientId: 'P001', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 110, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天兩次', notes: '術後第六週，穩定性增加中', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX002', patientId: 'P001', doctorId: 'D001', exerciseId: 'leg_raise', targetAngle: 45, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天一次', notes: '防止肌肉萎縮', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX003', patientId: 'P001', doctorId: 'D001', exerciseId: 'squat', targetAngle: 90, reps: 5, sets: 2, holdSeconds: 5, frequency: '每兩天一次', notes: '靠牆進行', startDate: '2026-03-10', endDate: '2026-04-10', active: true },
+  { id: 'RX004', patientId: 'P002', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 90, reps: 12, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '避免聳肩', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
+  { id: 'RX005', patientId: 'P002', doctorId: 'D001', exerciseId: 'elbow_flexion', targetAngle: 130, reps: 15, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '搭配 0.5kg 啞鈴', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
+  { id: 'RX006', patientId: 'P003', doctorId: 'D002', exerciseId: 'elbow_flexion', targetAngle: 110, reps: 10, sets: 2, holdSeconds: 2, frequency: '每天一次', notes: '誘發上肢動作', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
+  { id: 'RX007', patientId: 'P003', doctorId: 'D002', exerciseId: 'leg_raise', targetAngle: 30, reps: 8, sets: 2, holdSeconds: 3, frequency: '每天一次', notes: '控制力訓練', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
+  { id: 'RX008', patientId: 'P003', doctorId: 'D002', exerciseId: 'hip_abduction', targetAngle: 20, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '改善平衡', startDate: '2026-02-01', endDate: '2026-06-10', active: true },
+  { id: 'RX009', patientId: 'P004', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 30, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天一次', notes: '全髖置換後訓練', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX010', patientId: 'P004', doctorId: 'D001', exerciseId: 'side_leg_raise', targetAngle: 25, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '強化中臀肌', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
 ];
 
-// ─── Session Records ────────────────────────────────────────
-export const mockSessionRecords: SessionRecord[] = [
-  { id: 'S001', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-24', duration: 18, completedSets: 3, completedReps: 10, avgAngle: 118, maxAngle: 124, targetAngle: 120, score: 92, voiceFeedbackCount: 8 },
-  { id: 'S002', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-23', duration: 16, completedSets: 3, completedReps: 10, avgAngle: 115, maxAngle: 121, targetAngle: 120, score: 87, voiceFeedbackCount: 11 },
-  { id: 'S003', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-22', duration: 15, completedSets: 3, completedReps: 9, avgAngle: 110, maxAngle: 118, targetAngle: 120, score: 80, voiceFeedbackCount: 15 },
-  { id: 'S004', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-21', duration: 14, completedSets: 2, completedReps: 10, avgAngle: 105, maxAngle: 113, targetAngle: 120, score: 73, voiceFeedbackCount: 18 },
-  { id: 'S005', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-20', duration: 13, completedSets: 2, completedReps: 8, avgAngle: 100, maxAngle: 108, targetAngle: 120, score: 65, voiceFeedbackCount: 22 },
-  { id: 'S006', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-19', duration: 12, completedSets: 2, completedReps: 8, avgAngle: 96, maxAngle: 105, targetAngle: 120, score: 60, voiceFeedbackCount: 25 },
-  { id: 'S007', patientId: 'P001', exerciseId: 'EX001', date: '2026-03-18', duration: 11, completedSets: 2, completedReps: 7, avgAngle: 92, maxAngle: 100, targetAngle: 120, score: 55, voiceFeedbackCount: 28 },
-  { id: 'S008', patientId: 'P002', exerciseId: 'EX002', date: '2026-03-24', duration: 12, completedSets: 3, completedReps: 12, avgAngle: 85, maxAngle: 93, targetAngle: 90, score: 88, voiceFeedbackCount: 10 },
-  { id: 'S009', patientId: 'P002', exerciseId: 'EX002', date: '2026-03-23', duration: 11, completedSets: 3, completedReps: 11, avgAngle: 82, maxAngle: 90, targetAngle: 90, score: 82, voiceFeedbackCount: 13 },
-  { id: 'S010', patientId: 'P002', exerciseId: 'EX002', date: '2026-03-22', duration: 10, completedSets: 2, completedReps: 12, avgAngle: 78, maxAngle: 86, targetAngle: 90, score: 75, voiceFeedbackCount: 16 },
+// ─── 多維度專業統計數據 (Advanced Analytics) ───────────────────
+export const mockAnalyticsComparison = [
+  { patientId: 'P001', name: '王大明', avgDuration: 28, completionRate: 85, accuracy: 94, improvement: '+12%', trend: 'up' },
+  { patientId: 'P002', name: '李秀英', avgDuration: 18, completionRate: 72, accuracy: 88, improvement: '+5%', trend: 'up' },
+  { patientId: 'P003', name: '張福壽', avgDuration: 42, completionRate: 60, accuracy: 65, improvement: '+2%', trend: 'stable' },
+  { patientId: 'P004', name: '陳阿蘭', avgDuration: 12, completionRate: 45, accuracy: 72, improvement: '-3%', trend: 'down' },
 ];
 
-// ─── Weekly Activity ────────────────────────────────────────
-export const mockWeeklyActivity = [
-  { day: '週一', sessions: 2, score: 78, duration: 32 },
-  { day: '週二', sessions: 2, score: 82, duration: 35 },
-  { day: '週三', sessions: 1, score: 79, duration: 18 },
-  { day: '週四', sessions: 2, score: 85, duration: 34 },
-  { day: '週五', sessions: 2, score: 88, duration: 36 },
-  { day: '週六', sessions: 1, score: 87, duration: 20 },
-  { day: '週日', sessions: 0, score: 0, duration: 0 },
+export const mockCategoryStats = [
+  { category: '下肢', avgCompletion: 78, avgDuration: 15.5, dropRate: 4.2 },
+  { category: '上肢', avgCompletion: 82, avgDuration: 12.0, dropRate: 6.8 },
+  { category: '核心', avgCompletion: 55, avgDuration: 24.5, dropRate: 22.0 },
 ];
 
-// ─── Angle Progress (last 7 days) ───────────────────────────
-export const mockAngleProgress = [
-  { date: '3/18', angle: 92, target: 120 },
-  { date: '3/19', angle: 96, target: 120 },
-  { date: '3/20', angle: 100, target: 120 },
-  { date: '3/21', angle: 105, target: 120 },
-  { date: '3/22', angle: 110, target: 120 },
-  { date: '3/23', angle: 115, target: 120 },
-  { date: '3/24', angle: 118, target: 120 },
-];
-
-// ─── Family Members ─────────────────────────────────────────
-export const mockFamilyMembers: FamilyMember[] = [
-  { id: 'F001', name: '王小美', relation: '女兒', patientId: 'P001', phone: '0912-345-678', notificationsEnabled: true },
-  { id: 'F002', name: '李建國', relation: '兒子', patientId: 'P002', phone: '0923-456-789', notificationsEnabled: true },
-];
-
-// ─── Notifications ──────────────────────────────────────────
-export const mockNotifications = [
-  { id: 'N001', type: 'success', title: '今日訓練完成', message: '王大明 已完成今日膝蓋彎曲訓練，最大角度達 124°', time: '14:32', read: false },
-  { id: 'N002', type: 'warning', title: '訓練未達標', message: '昨日訓練完成率僅 67%，建議調整難度', time: '09:15', read: false },
-  { id: 'N003', type: 'info', title: '復健進度更新', message: '本週膝蓋角度平均提升 8°，進步明顯', time: '昨天', read: true },
-  { id: 'N004', type: 'success', title: '里程碑達成', message: '累計完成 50 次復健訓練！', time: '昨天', read: true },
-];
-
-// ─── System Stats ───────────────────────────────────────────
 export const mockSystemStats = {
-  totalPatients: 4,
-  activeToday: 3,
-  avgCompletionRate: 65.5,
-  totalSessions: 247,
-  avgScore: 81.2,
-  improvementRate: 12.4,
+  totalPatients: 4, activeToday: 4, avgCompletionRate: 68.4,
+  totalSessions: 312, avgScore: 82.5, improvementRate: 15.8, avgDailyTime: 32.5
 };
+
+export const mockWeeklyActivity = [
+  { day: '週一', sessions: 4, duration: 65, completion: 70 },
+  { day: '週二', sessions: 5, duration: 80, completion: 82 },
+  { day: '週三', sessions: 3, duration: 45, completion: 78 },
+  { day: '週四', sessions: 6, duration: 95, completion: 85 },
+  { day: '週五', sessions: 4, duration: 60, completion: 88 },
+  { day: '週六', sessions: 2, duration: 30, completion: 90 },
+  { day: '週日', sessions: 0, duration: 0, completion: 0 },
+];
+
+export const mockAlertStats = {
+  insufficientAngle: 158, excessiveSpeed: 45, postureDistortion: 32, targetReached: 840
+};
+
+// ─── 歷史記錄、通知與進度數據 ──────────────────────────────────
+export const mockSessionRecords: SessionRecord[] = [
+  { id: 'S001', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-24', duration: 25, completedSets: 3, completedReps: 10, avgAngle: 108, maxAngle: 115, targetAngle: 110, score: 92, voiceFeedbackCount: 8 }
+];
+
+export const mockNotifications = [
+  { id: 'N001', type: 'success', title: '今日訓練完成', message: '王大明 已完成膝蓋彎曲訓練', time: '14:32', read: false },
+  { id: 'N002', type: 'warning', title: '訓練進度落後', message: '陳阿蘭 本週目標完成率僅 45%', time: '10:15', read: false },
+  { id: 'N003', type: 'info', title: '新處方建立', message: '林醫師 已為 張福壽 新增手肘訓練', time: '09:00', read: true },
+];
+
+export const mockAngleProgress = [
+  { date: '3/18', angle: 92, target: 110 }, { date: '3/19', angle: 96, target: 110 }, { date: '3/20', angle: 100, target: 110 },
+  { date: '3/21', angle: 105, target: 110 }, { date: '3/22', angle: 110, target: 110 }, { date: '3/23', angle: 115, target: 110 },
+  { date: '3/24', angle: 118, target: 110 },
+];
+
+// 🌟 新增：跨角色即時通訊系統留言板 (Messages)
+export const mockMessages: Message[] = [
+  { id: 'M001', senderId: 'D001', receiverId: 'P001', senderRole: 'doctor', content: '大明叔叔，這週的深蹲角度有進步喔！繼續保持。', timestamp: '2026-03-24T10:30:00', isRead: true },
+  { id: 'M002', senderId: 'P001', receiverId: 'D001', senderRole: 'patient', content: '謝謝陳醫師，但我做側面抬腿時屁股有點痠，是正常的嗎？', timestamp: '2026-03-24T11:15:00', isRead: false },
+  { id: 'M003', senderId: 'F001', receiverId: 'T001', senderRole: 'family', content: '黃治療師您好，請問我爸爸(王大明)的復健頻率需要增加嗎？', timestamp: '2026-03-23T15:20:00', isRead: true },
+  { id: 'M004', senderId: 'T001', receiverId: 'F001', senderRole: 'therapist', content: '目前一天兩次剛好，避免肌肉過度疲勞，多注意他深蹲時背有沒有貼緊牆壁即可。', timestamp: '2026-03-23T16:00:00', isRead: true },
+  { id: 'M005', senderId: 'T002', receiverId: 'P003', senderRole: 'therapist', content: '福壽伯伯，明天下午兩點記得開啟平板，我們有線上視訊復健喔！', timestamp: '2026-03-25T09:00:00', isRead: false },
+];

@@ -1,11 +1,11 @@
 // ============================================================
 // RoleSelect — Entry Point / Role Selection Screen
-// Supports: 長者端 · 家屬端 · 醫師端 · 系統藍圖
+// 強化版：全畫面流體漸層背景 + 裝飾性光暈
 // ============================================================
 
 import React from 'react';
 import { useNavigate } from 'react-router';
-import { Activity, Users, Stethoscope, LayoutGrid, HeartPulse } from 'lucide-react';
+import { Activity, Users, Stethoscope, LayoutGrid, HeartPulse, ChevronRight } from 'lucide-react';
 import { motion } from 'motion/react';
 
 const roles = [
@@ -17,11 +17,8 @@ const roles = [
     icon: Activity,
     path: '/patient',
     gradient: 'from-blue-500 to-blue-700',
-    bgLight: 'bg-blue-50',
-    border: 'border-blue-200',
-    iconBg: 'bg-blue-500',
+    shadow: 'shadow-blue-100',
     mockUser: '王大明',
-    mockInfo: '72歲 · 右膝退化性關節炎',
   },
   {
     id: 'family',
@@ -31,11 +28,8 @@ const roles = [
     icon: Users,
     path: '/family',
     gradient: 'from-teal-500 to-teal-700',
-    bgLight: 'bg-teal-50',
-    border: 'border-teal-200',
-    iconBg: 'bg-teal-500',
+    shadow: 'shadow-teal-100',
     mockUser: '王小美',
-    mockInfo: '家屬（女兒）· 王大明的監護人',
   },
   {
     id: 'doctor',
@@ -45,11 +39,8 @@ const roles = [
     icon: Stethoscope,
     path: '/doctor',
     gradient: 'from-purple-500 to-purple-700',
-    bgLight: 'bg-purple-50',
-    border: 'border-purple-200',
-    iconBg: 'bg-purple-500',
+    shadow: 'shadow-purple-100',
     mockUser: 'Dr. 陳志明',
-    mockInfo: '復健科主治醫師 · 台大醫院',
   },
   {
     id: 'blueprint',
@@ -59,11 +50,8 @@ const roles = [
     icon: LayoutGrid,
     path: '/blueprint',
     gradient: 'from-orange-500 to-orange-700',
-    bgLight: 'bg-orange-50',
-    border: 'border-orange-200',
-    iconBg: 'bg-orange-500',
+    shadow: 'shadow-orange-100',
     mockUser: '開發團隊',
-    mockInfo: 'RehabBridge v1.0 · 系統設計文件',
   },
 ];
 
@@ -71,40 +59,50 @@ export default function RoleSelect() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#F4F7FC' }}>
+    <div className="min-h-screen relative overflow-hidden flex flex-col" 
+      // 這裡加強了背景漸層的色彩濃度，從淡藍到粉紫
+      style={{ background: 'linear-gradient(145deg, #F0F4FF 0%, #FDF2F8 50%, #F5F3FF 100%)' }}>
+      
+      {/* ── 背景裝飾：更明顯的淡色流體光暈 ── */}
+      {/* 左上角藍色光暈 */}
+      <div className="absolute top-[-15%] left-[-10%] w-[600px] h-[600px] rounded-full bg-blue-300/20 blur-[120px]" />
+      
+      {/* 右側紫色光暈 */}
+      <div className="absolute top-[20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-purple-300/20 blur-[100px]" />
+      
+      {/* 底部中間粉色光暈 */}
+      <div className="absolute bottom-[-10%] left-[20%] w-[700px] h-[700px] rounded-full bg-pink-200/15 blur-[130px]" />
+      
+      {/* 左側中間青色光點 */}
+      <div className="absolute top-[50%] left-[-5%] w-64 h-64 rounded-full bg-teal-200/20 blur-[80px]" />
+
       {/* Header */}
-      <header className="px-8 pt-12 pb-6 text-center">
+      <header className="px-8 pt-16 pb-8 text-center relative z-10">
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="flex items-center justify-center gap-3 mb-4"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="flex flex-col items-center justify-center gap-4 mb-2"
         >
-          <div className="w-12 h-12 bg-blue-500 rounded-2xl flex items-center justify-center shadow-md">
-            <HeartPulse className="w-7 h-7 text-white" />
+          {/* Logo 容器也加上了玻璃質感 */}
+          <div className="w-20 h-20 bg-white/80 rounded-[28px] flex items-center justify-center shadow-2xl shadow-blue-200/50 border border-white backdrop-blur-xl">
+            <HeartPulse className="w-10 h-10 text-blue-500" />
           </div>
-          <div className="text-left">
-            <h1 style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.2, color: '#1A2035' }}>
-              RehabBridge
+          <div>
+            <h1 className="tracking-tight" style={{ fontSize: 36, fontWeight: 900, color: '#1A2035' }}>
+              Rehab<span className="text-blue-600">Bridge</span>
             </h1>
-            <p style={{ fontSize: 14, color: '#78909C', lineHeight: 1.4 }}>
+            <div className="h-1.5 w-12 bg-blue-500 mx-auto rounded-full mt-1 mb-2 shadow-sm shadow-blue-200" />
+            <p className="font-bold uppercase tracking-widest" style={{ fontSize: 14, color: '#90A4AE' }}>
               AI 智慧復健追蹤系統
             </p>
           </div>
         </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
-        >
-          <p style={{ color: '#90A4AE', fontSize: 15 }}>請選擇角色入口</p>
-        </motion.div>
       </header>
 
       {/* Role Cards */}
-      <main className="flex-1 px-8 pb-12">
-        <div className="max-w-5xl mx-auto grid grid-cols-2 gap-5 h-full">
+      <main className="flex-1 px-8 pb-16 relative z-10">
+        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
           {roles.map((role, index) => {
             const Icon = role.icon;
             return (
@@ -112,53 +110,60 @@ export default function RoleSelect() {
                 key={role.id}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
+                whileHover={{ y: -8, scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 transition={{ delay: 0.1 + index * 0.1, duration: 0.5 }}
                 onClick={() => navigate(role.path)}
+                // 卡片本體改為更透明的玻璃感，讓背景漸層透出來
                 className={`
-                  group relative overflow-hidden rounded-3xl p-8 text-left
-                  bg-white border hover:shadow-lg
-                  transition-all duration-300 hover:scale-[1.02]
-                  cursor-pointer
+                  group relative overflow-hidden rounded-[36px] p-8 text-left
+                  bg-white/50 border border-white/60 backdrop-blur-lg
+                  hover:bg-white/80 transition-all duration-300
+                  shadow-xl shadow-gray-200/30 hover:shadow-2xl hover:${role.shadow}
                 `}
-                style={{ minHeight: 200, borderColor: '#E8ECF4' }}
+                style={{ minHeight: 220 }}
               >
-                {/* Background tint on hover */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${role.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
+                {/* 裝飾背景色塊 */}
+                <div className={`absolute top-0 right-0 w-40 h-40 bg-gradient-to-br ${role.gradient} opacity-[0.04] rounded-bl-full transition-opacity group-hover:opacity-[0.1]`} />
 
-                {/* Icon */}
-                <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br ${role.gradient} mb-5 shadow-md`}>
-                  <Icon className="w-7 h-7 text-white" />
-                </div>
-
-                {/* Labels */}
-                <div className="mb-3 flex items-baseline gap-2">
-                  <span style={{ fontSize: 24, fontWeight: 700, color: '#1A2035', lineHeight: 1.2 }}>
-                    {role.label}
-                  </span>
-                  <span style={{ fontSize: 13, color: '#90A4AE' }}>
-                    {role.sublabel}
-                  </span>
-                </div>
-
-                {/* Mock user chip */}
-                <div className="flex items-center gap-2 mt-auto">
-                  <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${role.gradient} flex items-center justify-center`}>
-                    <span style={{ fontSize: 11, color: 'white', fontWeight: 700 }}>
-                      {role.mockUser[0]}
-                    </span>
+                <div className="flex flex-col h-full">
+                  {/* Icon */}
+                  <div className={`inline-flex items-center justify-center w-16 h-16 rounded-[22px] bg-gradient-to-br ${role.gradient} mb-6 shadow-lg ${role.shadow}`}>
+                    <Icon className="w-8 h-8 text-white" />
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, color: '#546E7A', fontWeight: 600 }}>
-                      {role.mockUser}
+
+                  {/* Labels */}
+                  <div className="flex flex-col gap-1 mb-4">
+                    <div className="flex items-center gap-3">
+                      <span className="font-black" style={{ fontSize: 26, color: '#1A2035' }}>
+                        {role.label}
+                      </span>
+                      <span className="px-3 py-1 rounded-full bg-white/80 border border-gray-100 text-[11px] font-black text-gray-500 shadow-sm uppercase">
+                        {role.sublabel}
+                      </span>
+                    </div>
+                    <p className="text-gray-400 text-sm font-bold leading-relaxed max-w-[280px]">
+                      {role.description}
+                    </p>
+                  </div>
+
+                  {/* Mock user chip */}
+                  <div className="mt-auto flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 bg-white/80 p-1.5 pr-4 rounded-full border border-white shadow-sm">
+                      <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${role.gradient} flex items-center justify-center shadow-inner`}>
+                        <span style={{ fontSize: 12, color: 'white', fontWeight: 900 }}>
+                          {role.mockUser[0]}
+                        </span>
+                      </div>
+                      <span className="font-black text-gray-600" style={{ fontSize: 14 }}>
+                        {role.mockUser}
+                      </span>
+                    </div>
+                    
+                    <div className="w-10 h-10 rounded-full bg-white/50 flex items-center justify-center group-hover:bg-blue-600 transition-all duration-300 shadow-sm border border-white">
+                       <ChevronRight size={20} className="text-gray-400 group-hover:text-white transition-colors" />
                     </div>
                   </div>
-                </div>
-
-                {/* Arrow */}
-                <div className="absolute right-6 bottom-6 opacity-20 group-hover:opacity-50 group-hover:translate-x-1 transition-all duration-200">
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M4 10h12M12 6l4 4-4 4" stroke="#1A2035" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
                 </div>
               </motion.button>
             );
@@ -167,9 +172,9 @@ export default function RoleSelect() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center pb-6">
-        <p style={{ fontSize: 12, color: '#B0BEC5' }}>
-          RehabBridge v1.0 · 僅供開發測試使用
+      <footer className="text-center pb-8 relative z-10">
+        <p className="font-black" style={{ fontSize: 12, color: '#B0BEC5', letterSpacing: '0.15em' }}>
+          REHABBRIDGE · 2026 · VERSION 1.0.0
         </p>
       </footer>
     </div>
