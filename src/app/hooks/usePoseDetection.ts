@@ -1,6 +1,6 @@
 // ============================================================
 // PoseDetection Hook — Data Layer / ML Kit Equivalent
-// Uses TensorFlow.js + MoveNet SINGLEPOSE_LIGHTNING
+// Uses TensorFlow.js + BlazePose (accuracy-first) with fallback
 // Provides real-time keypoints at ~30fps via requestAnimationFrame
 // ============================================================
 
@@ -14,6 +14,41 @@ export interface PoseDetectionState {
   status: PoseStatus;
   errorMessage: string;
   fps: number;
+}
+
+function pickCenterPose(poses: any[], videoWidth: number): any | null {
+  if (!poses.length) return null;
+  if (poses.length === 1) return poses[0];
+
+  const getPoseCenterX = (pose: any): number | null => {
+    const points = (pose?.keypoints ?? []).filter((kp: any) =>
+      kp && typeof kp.x === 'number' && (kp.score ?? 1) > 0.2
+    );
+    if (!points.length) return null;
+
+    // Prefer torso center for more stable "main person" picking.
+    const torsoNames = new Set(['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']);
+    const torsoPoints = points.filter((kp: any) => torsoNames.has(kp.name));
+    const usePoints = torsoPoints.length >= 2 ? torsoPoints : points;
+    const avgX = usePoints.reduce((sum: number, kp: any) => sum + kp.x, 0) / usePoints.length;
+    return avgX;
+  };
+
+  const centerX = videoWidth / 2;
+  let bestPose = poses[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const pose of poses) {
+    const poseCenterX = getPoseCenterX(pose);
+    if (poseCenterX === null) continue;
+    const distance = Math.abs(poseCenterX - centerX);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestPose = pose;
+    }
+  }
+
+  return bestPose;
 }
 
 let tfReadyPromise: Promise<void> | null = null;
@@ -42,17 +77,19 @@ const createDetectorWithFallback = async () => {
   await ensureTfReady();
   const poseDetection = await getPoseDetectionModule();
 
-  // Fastest startup first (bundled model, no remote assets).
+  // Accuracy first: BlazePose gives denser lower-body keypoints for rehab joints.
   try {
     return await poseDetection.createDetector(
-      poseDetection.SupportedModels.MoveNet,
+      poseDetection.SupportedModels.BlazePose,
       {
-        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        runtime: 'mediapipe',
+        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose',
+        modelType: 'full',
         enableSmoothing: true,
       }
     );
   } catch (e) {
-    console.warn('MoveNet failed, fallback to BlazePose tfjs.', e);
+    console.warn('BlazePose mediapipe failed, fallback to BlazePose tfjs.', e);
   }
 
   try {
@@ -65,15 +102,13 @@ const createDetectorWithFallback = async () => {
       }
     );
   } catch (e) {
-    console.warn('BlazePose tfjs failed, fallback to mediapipe runtime.', e);
+    console.warn('BlazePose tfjs failed, fallback to MoveNet.', e);
   }
 
   return await poseDetection.createDetector(
-    poseDetection.SupportedModels.BlazePose,
+    poseDetection.SupportedModels.MoveNet,
     {
-      runtime: 'mediapipe',
-      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose',
-      modelType: 'full',
+      modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
       enableSmoothing: true,
     }
   );
@@ -142,7 +177,9 @@ export function usePoseDetection(
         video: {
           facingMode: 'user',
           width: { ideal: 1280 },
-          height: { ideal: 720 },
+          height: { ideal: 960 },
+          aspectRatio: { ideal: 4 / 3 },
+          frameRate: { ideal: 30, max: 60 },
         },
         audio: false,
       });
@@ -187,7 +224,19 @@ export function usePoseDetection(
           }
 
           if (poses.length > 0) {
-            const keypoints: Keypoint[] = poses[0].keypoints.map((kp: any, index: number) => ({
+            const mainPose = pickCenterPose(poses, video.videoWidth || video.clientWidth || 1280);
+            if (!mainPose) {
+              setState(prev => ({
+                ...prev,
+                keypoints: [],
+                status: 'detecting',
+                fps: fpsRef.current,
+              }));
+              rafRef.current = requestAnimationFrame(detect);
+              return;
+            }
+
+            const keypoints: Keypoint[] = mainPose.keypoints.map((kp: any, index: number) => ({
               name: kp.name,
               x: kp.x,
               y: kp.y,

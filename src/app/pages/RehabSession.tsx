@@ -5,7 +5,7 @@
 // Doctor-prescribed target angle comparison
 // ============================================================
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft, Volume2, VolumeX, Play, Pause,
@@ -37,7 +37,6 @@ export default function RehabSession() {
 
   const [isActive, setIsActive] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [voiceLocale, setVoiceLocale] = useState<'zh-TW' | 'nan-TW'>('zh-TW');
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
@@ -77,60 +76,7 @@ export default function RehabSession() {
   );
 
   // Voice coach hook
-  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
-    throttleMs: 3000,
-    lang: voiceLocale,
-  });
-
-  const voiceText = useCallback((key: string, n?: number) => {
-    if (voiceLocale === 'nan-TW') {
-      switch (key) {
-        case 'start':
-          return '請開始做動作。';
-        case 'achieved':
-          return '真好，保持咧。';
-        case 'complete':
-          return '恭喜，攏完成啊。';
-        case 'setComplete':
-          return `第 ${n ?? 1} 組完成，先歇一下。`;
-        case 'repComplete':
-          return `第 ${n ?? 1} 擺。`;
-        case 'tooLow':
-          return '閣較用力一下。';
-        case 'tooHigh':
-          return '放輕鬆，免傷緊。';
-        case 'paused':
-          return '訓練暫停。';
-        case 'resume':
-          return '繼續做。';
-        default:
-          return '';
-      }
-    }
-
-    switch (key) {
-      case 'start':
-        return exercise?.voicePrompts.start ?? '請開始動作';
-      case 'achieved':
-        return exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持';
-      case 'complete':
-        return exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！';
-      case 'setComplete':
-        return `第 ${n ?? 1} 組完成，請休息一下`;
-      case 'repComplete':
-        return `第 ${n ?? 1} 次`;
-      case 'tooLow':
-        return exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度';
-      case 'tooHigh':
-        return exercise?.voicePrompts.tooHigh ?? '請稍微放鬆一些';
-      case 'paused':
-        return '訓練已暫停';
-      case 'resume':
-        return '繼續訓練';
-      default:
-        return '';
-    }
-  }, [voiceLocale, exercise]);
+  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({ throttleMs: 3000 });
 
   // Toggle voice
   const toggleVoice = () => {
@@ -156,14 +102,42 @@ export default function RehabSession() {
     ? getJointTripletConfidence(keypoints, mirroredJoints)
     : 0;
 
-  const useMirrored =
-    mirroredAngle !== null &&
-    (primaryAngle === null || mirroredConfidence > primaryConfidence);
+  const sideLockRef = useRef<'primary' | 'mirrored'>('primary');
+  const scorePrimary =
+    (primaryAngle !== null ? 1 : 0) * 1000 +
+    primaryConfidence * 100 +
+    (primaryAngle !== null ? Math.max(0, 180 - Math.abs(targetAngle - primaryAngle)) : 0);
+  const scoreMirrored =
+    (mirroredAngle !== null ? 1 : 0) * 1000 +
+    mirroredConfidence * 100 +
+    (mirroredAngle !== null ? Math.max(0, 180 - Math.abs(targetAngle - mirroredAngle)) : 0);
+
+  let chosenSide: 'primary' | 'mirrored' = sideLockRef.current;
+  if (primaryAngle === null && mirroredAngle !== null) {
+    chosenSide = 'mirrored';
+  } else if (mirroredAngle === null && primaryAngle !== null) {
+    chosenSide = 'primary';
+  } else if (primaryAngle !== null && mirroredAngle !== null) {
+    // Hysteresis to prevent frame-to-frame side flicker when both sides are visible.
+    const switchThreshold = 12;
+    if (scoreMirrored > scorePrimary + switchThreshold) {
+      chosenSide = 'mirrored';
+    } else if (scorePrimary > scoreMirrored + switchThreshold) {
+      chosenSide = 'primary';
+    }
+  }
+  sideLockRef.current = chosenSide;
+
+  const useMirrored = chosenSide === 'mirrored';
 
   const activeJoints = useMirrored ? mirroredJoints : primaryJoints;
   const detectedAngle = useMirrored ? mirroredAngle : primaryAngle;
   const currentAngle = detectedAngle ?? 0;
   const hasValidAngle = detectedAngle !== null;
+
+  useEffect(() => {
+    sideLockRef.current = 'primary';
+  }, [exerciseId]);
 
   const [displayAngle, setDisplayAngle] = useState(0);
   const displayAngleRef = useRef(0);
@@ -273,7 +247,7 @@ export default function RehabSession() {
         setIsHolding(true);
         setHoldCountdown(effectiveHoldSeconds);
         if (!isThrottled || lastFeedbackRef.current !== 'achieved') {
-          speak(voiceText('achieved'), false, voiceLocale);
+          speak(exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持');
           setFeedbackMessage(`✅ 達到目標！保持 ${effectiveHoldSeconds} 秒`);
           setFeedbackType('success');
           lastFeedbackRef.current = 'achieved';
@@ -298,11 +272,11 @@ export default function RehabSession() {
                   if (nextSet > totalSets) {
                     setSessionComplete(true);
                     setIsActive(false);
-                    speak(voiceText('complete'), false, voiceLocale);
+                    speak(exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！');
                     setFeedbackMessage('🎉 訓練完成！');
                     setFeedbackType('success');
                   } else {
-                    speak(voiceText('setComplete', prevSet), false, voiceLocale);
+                    speak(`第 ${prevSet} 組完成，請休息一下`);
                     setFeedbackMessage(`第 ${prevSet} 組完成，準備下一組`);
                     setFeedbackType('info');
                   }
@@ -310,7 +284,7 @@ export default function RehabSession() {
                 });
                 return 0;
               }
-              speak(voiceText('repComplete', next), false, voiceLocale);
+              speak(`第 ${next} 次`);
               setFeedbackMessage(`第 ${next} 次完成`);
               setFeedbackType('info');
               return next;
@@ -334,11 +308,11 @@ export default function RehabSession() {
 
       if (!isThrottled) {
         if (angleResult.status === 'below') {
-          speak(voiceText('tooLow'), false, voiceLocale);
+          speak(exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度');
           setFeedbackMessage('📈 請繼續加大動作幅度');
           setFeedbackType('warning');
         } else if (angleResult.status === 'above') {
-          speak(voiceText('tooHigh'), false, voiceLocale);
+          speak(exercise?.voicePrompts.tooHigh ?? '請稍微放鬆一些');
           setFeedbackMessage('📉 請稍微放鬆一些');
           setFeedbackType('warning');
         }
@@ -360,8 +334,6 @@ export default function RehabSession() {
     totalSets,
     targetAngle,
     exercise,
-    voiceLocale,
-    voiceText,
     speak,
   ]);
 
@@ -372,19 +344,19 @@ export default function RehabSession() {
     setRepArmed(true);
     setFeedbackMessage(exercise?.voicePrompts.start ?? '請開始動作');
     setFeedbackType('info');
-    speak(voiceText('start'), true, voiceLocale);
+    speak(exercise?.voicePrompts.start ?? '請開始動作');
   };
 
   const handlePause = () => {
     setIsActive(false);
-    speak(voiceText('paused'), true, voiceLocale);
+    speak('訓練已暫停');
     setFeedbackMessage('訓練已暫停');
     setFeedbackType('info');
   };
 
   const handleResume = () => {
     setIsActive(true);
-    speak(voiceText('resume'), true, voiceLocale);
+    speak('繼續訓練');
     setFeedbackMessage('繼續訓練');
     setFeedbackType('info');
   };
@@ -449,14 +421,6 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setVoiceLocale(prev => (prev === 'zh-TW' ? 'nan-TW' : 'zh-TW'))}
-            className="px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
-            style={{ color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.2)', fontSize: 12, fontWeight: 700 }}
-            title="切換語音語言"
-          >
-            {voiceLocale === 'zh-TW' ? '中文' : '閩南語'}
-          </button>
           {/* FPS indicator */}
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>
