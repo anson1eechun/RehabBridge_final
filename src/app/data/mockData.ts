@@ -119,6 +119,9 @@ export const mockPatients: Patient[] = [
   { id: 'P002', name: '李秀英', age: 68, gender: '女', diagnosis: '左肩旋轉肌袖受傷術後', doctorId: 'D001', familyContact: '李建國', avatar: '李', admissionDate: '2026-02-01', completionRate: 72, lastSessionDate: '2026-03-22', status: 'active' },
   { id: 'P003', name: '張福壽', age: 75, gender: '男', diagnosis: '腦中風後右側肢體偏癱', doctorId: 'D002', familyContact: '張明芳', avatar: '張', admissionDate: '2026-01-08', completionRate: 60, lastSessionDate: '2026-03-21', status: 'active' },
   { id: 'P004', name: '陳阿蘭', age: 70, gender: '女', diagnosis: '全髖關節置換術後（左側）', doctorId: 'D001', familyContact: '陳大偉', avatar: '陳', admissionDate: '2026-03-01', completionRate: 45, lastSessionDate: '2026-03-20', status: 'active' },
+  { id: 'P005', name: '林志華', age: 66, gender: '男', diagnosis: '右肩沾黏性關節囊炎', doctorId: 'D001', familyContact: '林佩玲', avatar: '林', admissionDate: '2026-02-18', completionRate: 78, lastSessionDate: '2026-03-24', status: 'active' },
+  { id: 'P006', name: '郭美玲', age: 64, gender: '女', diagnosis: '左膝半月板術後恢復期', doctorId: 'D001', familyContact: '郭俊宏', avatar: '郭', admissionDate: '2026-02-25', completionRate: 69, lastSessionDate: '2026-03-23', status: 'active' },
+  { id: 'P007', name: '吳建成', age: 73, gender: '男', diagnosis: '髖關節活動受限合併肌力不足', doctorId: 'D001', familyContact: '吳雅芬', avatar: '吳', admissionDate: '2026-03-03', completionRate: 58, lastSessionDate: '2026-03-22', status: 'active' },
 ];
 
 export const mockFamilyMembers: FamilyMember[] = [
@@ -171,6 +174,9 @@ export const mockPrescriptions: Prescription[] = [
   { id: 'RX008', patientId: 'P003', doctorId: 'D002', exerciseId: 'hip_abduction', targetAngle: 20, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '改善平衡', startDate: '2026-02-01', endDate: '2026-06-10', active: true },
   { id: 'RX009', patientId: 'P004', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 30, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天一次', notes: '全髖置換後訓練', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
   { id: 'RX010', patientId: 'P004', doctorId: 'D001', exerciseId: 'side_leg_raise', targetAngle: 25, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '強化中臀肌', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX011', patientId: 'P005', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 95, reps: 12, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '避免代償聳肩', startDate: '2026-02-20', endDate: '2026-05-20', active: true },
+  { id: 'RX012', patientId: 'P006', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 105, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天一次', notes: '術後需注意疼痛回報', startDate: '2026-03-01', endDate: '2026-06-01', active: true },
+  { id: 'RX013', patientId: 'P007', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 28, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '先穩定平衡再提高角度', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
 ];
 
 // ─── 多維度專業統計數據 (Advanced Analytics) ───────────────────
@@ -208,7 +214,12 @@ export const mockAlertStats = {
 
 // ─── 歷史記錄、通知與進度數據 ──────────────────────────────────
 export const mockSessionRecords: SessionRecord[] = [
-  { id: 'S001', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-24', duration: 25, completedSets: 3, completedReps: 10, avgAngle: 108, maxAngle: 115, targetAngle: 110, score: 92, voiceFeedbackCount: 8 }
+  { id: 'S001', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-24', duration: 25, completedSets: 3, completedReps: 10, avgAngle: 108, maxAngle: 115, targetAngle: 110, score: 92, voiceFeedbackCount: 8 },
+  { id: 'S002', patientId: 'P002', exerciseId: 'shoulder_abduction', date: '2026-03-22', duration: 18, completedSets: 3, completedReps: 12, avgAngle: 84, maxAngle: 91, targetAngle: 90, score: 83, voiceFeedbackCount: 10 },
+  { id: 'S003', patientId: 'P004', exerciseId: 'hip_abduction', date: '2026-03-20', duration: 20, completedSets: 2, completedReps: 8, avgAngle: 62, maxAngle: 72, targetAngle: 90, score: 61, voiceFeedbackCount: 14 },
+  { id: 'S004', patientId: 'P005', exerciseId: 'shoulder_abduction', date: '2026-03-24', duration: 22, completedSets: 3, completedReps: 12, avgAngle: 92, maxAngle: 100, targetAngle: 95, score: 87, voiceFeedbackCount: 9 },
+  { id: 'S005', patientId: 'P006', exerciseId: 'knee_flexion', date: '2026-03-23', duration: 21, completedSets: 3, completedReps: 9, avgAngle: 99, maxAngle: 108, targetAngle: 105, score: 79, voiceFeedbackCount: 11 },
+  { id: 'S006', patientId: 'P007', exerciseId: 'hip_abduction', date: '2026-03-22', duration: 19, completedSets: 2, completedReps: 7, avgAngle: 70, maxAngle: 79, targetAngle: 90, score: 68, voiceFeedbackCount: 13 }
 ];
 
 export const mockNotifications = [

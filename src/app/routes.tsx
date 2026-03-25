@@ -3,7 +3,7 @@
 // ============================================================
 import { createBrowserRouter, Outlet, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 
 // 頁面組件引入
 import RoleSelect from './pages/RoleSelect';
@@ -24,6 +24,7 @@ const MainLayout = () => {
   // 1. 判斷顯示邏輯：只有在身分頁面（長者/家屬/醫生）才顯示訊息球
   // 首頁 (/) 與 復健執行頁 (/rehab/) 保持完全清爽
   const showChatButton = location.pathname !== '/' && !location.pathname.includes('/rehab/');
+  const isEntryPage = location.pathname === '/';
 
   // 2. 換頁自動重置：當使用者切換頁面時，自動關閉訊息抽屜
   useEffect(() => {
@@ -31,7 +32,7 @@ const MainLayout = () => {
   }, [location.pathname]);
 
   // 3. 身分自動判斷：根據目前 URL 決定 ChatWidget 的權限與對話對象
-  const getRoleInfo = () => {
+  const roleInfo = useMemo(() => {
     if (location.pathname.includes('/doctor')) {
       return { role: 'doctor' as const, id: 'D001', label: '醫師管理端' };
     }
@@ -39,31 +40,37 @@ const MainLayout = () => {
       return { role: 'family' as const, id: 'F001', label: '家屬守護端' };
     }
     return { role: 'patient' as const, id: 'P001', label: '長者康復端' };
-  };
+  }, [location.pathname]);
 
-  const { role, id, label } = getRoleInfo();
+  const { role, id, label } = roleInfo;
 
   return (
-    <div className="h-screen w-screen bg-[#F8FAFC] overflow-hidden relative font-sans">
+    <div className="h-[100dvh] w-screen bg-[#F8FAFC] overflow-hidden relative font-sans">
       
       {/* 🌟 核心內容區 (Outlet)
           這裡永遠佔據 100% 寬度與高度，側邊欄開啟時也不會擠壓此區域 */}
-      <main className="h-full w-full overflow-y-auto relative scroll-smooth">
-        <div key={location.pathname} className="animate-fade-in min-h-full">
+      <main
+        className={`h-full w-full relative scroll-smooth [transform:translateZ(0)] ${
+          isEntryPage ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain'
+        }`}
+        style={{ WebkitOverflowScrolling: isEntryPage ? 'auto' : 'touch' }}
+      >
+        <div className="min-h-full">
           <Outlet />
         </div>
       </main>
 
       {/* 🌟 浮動訊息按鈕 (FAB)
           平常縮在右下角，只有 showChatButton 為 true 時才出現 */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {showChatButton && (
           <motion.button
-            initial={{ scale: 0, opacity: 0, y: 20 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0, opacity: 0, y: 20 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
+            transition={{ duration: 0.14 }}
             onClick={() => setIsChatOpen(true)}
             className="fixed bottom-10 right-10 w-16 h-16 bg-blue-600 text-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.2)] flex items-center justify-center z-[60] border-4 border-white"
           >
@@ -78,7 +85,7 @@ const MainLayout = () => {
 
       {/* 🌟 側邊訊息抽屜面板 (Drawer)
           只有點擊球之後才會滑入 */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {isChatOpen && (
           <>
             {/* 背景遮罩 (Overlay)：模糊背景並提供點擊關閉功能 */}
@@ -87,7 +94,7 @@ const MainLayout = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsChatOpen(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[70]"
+              className="fixed inset-0 bg-black/30 z-[70]"
             />
             
             {/* 面板主體 */}
@@ -95,7 +102,7 @@ const MainLayout = () => {
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 28, stiffness: 240 }}
+              transition={{ type: 'spring', damping: 32, stiffness: 300, mass: 0.7 }}
               className="fixed top-0 right-0 w-full sm:w-[450px] h-full bg-white shadow-[-20px_0_50px_rgba(0,0,0,0.15)] z-[80] flex flex-col"
             >
               {/* 面板頭部 */}

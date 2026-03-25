@@ -19,6 +19,9 @@ import { AngleGauge } from '../components/AngleGauge';
 import {
   extractAngleFromKeypoints,
   getAngleResult,
+  mirrorJointTriplet,
+  getJointTripletConfidence,
+  type JointRef,
 } from '../utils/angleCalculator';
 import { mockExercises, mockPrescriptions } from '../data/mockData';
 
@@ -34,11 +37,13 @@ export default function RehabSession() {
 
   const [isActive, setIsActive] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceLocale, setVoiceLocale] = useState<'zh-TW' | 'nan-TW'>('zh-TW');
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
   const [holdCountdown, setHoldCountdown] = useState(0);
   const [isHolding, setIsHolding] = useState(false);
+  const [repArmed, setRepArmed] = useState(true);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackType, setFeedbackType] = useState<'info' | 'success' | 'warning'>('info');
   const [sessionComplete, setSessionComplete] = useState(false);
@@ -59,6 +64,11 @@ export default function RehabSession() {
   const totalReps = prescription?.reps ?? exercise?.reps ?? 10;
   const holdSeconds = prescription?.holdSeconds ?? exercise?.holdSeconds ?? 3;
 
+  // Senior-friendly mode: lower threshold so movements are easier to complete.
+  const effectiveTolerance = Math.max(tolerance, 15);
+  const effectiveHoldSeconds = Math.max(1, Math.min(holdSeconds, 2));
+  const repRearmMargin = 6;
+
   // Pose detection hook
   const { keypoints, status, errorMessage, fps } = usePoseDetection(
     videoRef,
@@ -67,7 +77,60 @@ export default function RehabSession() {
   );
 
   // Voice coach hook
-  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({ throttleMs: 3000 });
+  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
+    throttleMs: 3000,
+    lang: voiceLocale,
+  });
+
+  const voiceText = useCallback((key: string, n?: number) => {
+    if (voiceLocale === 'nan-TW') {
+      switch (key) {
+        case 'start':
+          return '請開始做動作。';
+        case 'achieved':
+          return '真好，保持咧。';
+        case 'complete':
+          return '恭喜，攏完成啊。';
+        case 'setComplete':
+          return `第 ${n ?? 1} 組完成，先歇一下。`;
+        case 'repComplete':
+          return `第 ${n ?? 1} 擺。`;
+        case 'tooLow':
+          return '閣較用力一下。';
+        case 'tooHigh':
+          return '放輕鬆，免傷緊。';
+        case 'paused':
+          return '訓練暫停。';
+        case 'resume':
+          return '繼續做。';
+        default:
+          return '';
+      }
+    }
+
+    switch (key) {
+      case 'start':
+        return exercise?.voicePrompts.start ?? '請開始動作';
+      case 'achieved':
+        return exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持';
+      case 'complete':
+        return exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！';
+      case 'setComplete':
+        return `第 ${n ?? 1} 組完成，請休息一下`;
+      case 'repComplete':
+        return `第 ${n ?? 1} 次`;
+      case 'tooLow':
+        return exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度';
+      case 'tooHigh':
+        return exercise?.voicePrompts.tooHigh ?? '請稍微放鬆一些';
+      case 'paused':
+        return '訓練已暫停';
+      case 'resume':
+        return '繼續訓練';
+      default:
+        return '';
+    }
+  }, [voiceLocale, exercise]);
 
   // Toggle voice
   const toggleVoice = () => {
@@ -76,12 +139,110 @@ export default function RehabSession() {
     setVoiceSetting(next);
   };
 
-  // Calculate current angle from keypoints
-  const currentAngle = exercise?.joints
-    ? extractAngleFromKeypoints(keypoints, exercise.joints as [string, string, string]) ?? 0
+  // Calculate current angle from keypoints with left/right auto fallback.
+  const primaryJoints = (exercise?.joints ?? [0, 0, 0]) as [JointRef, JointRef, JointRef];
+  const mirroredJoints = mirrorJointTriplet(primaryJoints);
+  const primaryAngle = exercise?.joints
+    ? extractAngleFromKeypoints(keypoints, primaryJoints)
+    : null;
+  const mirroredAngle = exercise?.joints
+    ? extractAngleFromKeypoints(keypoints, mirroredJoints)
+    : null;
+
+  const primaryConfidence = exercise?.joints
+    ? getJointTripletConfidence(keypoints, primaryJoints)
+    : 0;
+  const mirroredConfidence = exercise?.joints
+    ? getJointTripletConfidence(keypoints, mirroredJoints)
     : 0;
 
-  const angleResult = getAngleResult(currentAngle, targetAngle, tolerance);
+  const useMirrored =
+    mirroredAngle !== null &&
+    (primaryAngle === null || mirroredConfidence > primaryConfidence);
+
+  const activeJoints = useMirrored ? mirroredJoints : primaryJoints;
+  const detectedAngle = useMirrored ? mirroredAngle : primaryAngle;
+  const currentAngle = detectedAngle ?? 0;
+  const hasValidAngle = detectedAngle !== null;
+
+  const [displayAngle, setDisplayAngle] = useState(0);
+  const displayAngleRef = useRef(0);
+  const displayRafRef = useRef<number | null>(null);
+
+  // Keep camera overlay angle and gauge angle in sync by sharing one smoothed value.
+  useEffect(() => {
+    if (!hasValidAngle) {
+      displayAngleRef.current = 0;
+      setDisplayAngle(0);
+      if (displayRafRef.current) {
+        cancelAnimationFrame(displayRafRef.current);
+        displayRafRef.current = null;
+      }
+      return;
+    }
+
+    const target = currentAngle;
+    if (displayRafRef.current) {
+      cancelAnimationFrame(displayRafRef.current);
+    }
+
+    const animate = () => {
+      const current = displayAngleRef.current;
+      const diff = target - current;
+
+      if (Math.abs(diff) < 0.15) {
+        displayAngleRef.current = target;
+        setDisplayAngle(target);
+        displayRafRef.current = null;
+        return;
+      }
+
+      // Fast smoothing to remain responsive but stable for chart path rendering.
+      const step = Math.sign(diff) * Math.min(Math.abs(diff) * 0.45 + 0.8, 10);
+      const next = current + step;
+      displayAngleRef.current = next;
+      setDisplayAngle(next);
+      displayRafRef.current = requestAnimationFrame(animate);
+    };
+
+    displayRafRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (displayRafRef.current) {
+        cancelAnimationFrame(displayRafRef.current);
+      }
+    };
+  }, [currentAngle, hasValidAngle]);
+
+  const uiAngle = Math.round(displayAngle);
+  const uiAngleResult = getAngleResult(uiAngle, targetAngle, effectiveTolerance);
+  const angleResult = getAngleResult(currentAngle, targetAngle, effectiveTolerance);
+
+  // Lock viewport scrolling on this full-screen rehab page (iPad/PWA friendly).
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+
+    const prevHtmlOverflow = html.style.overflow;
+    const prevHtmlOverscroll = html.style.overscrollBehavior;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyOverscroll = body.style.overscrollBehavior;
+    const prevBodyTouchAction = body.style.touchAction;
+
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.overscrollBehavior = 'none';
+    body.style.touchAction = 'manipulation';
+
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      html.style.overscrollBehavior = prevHtmlOverscroll;
+      body.style.overflow = prevBodyOverflow;
+      body.style.overscrollBehavior = prevBodyOverscroll;
+      body.style.touchAction = prevBodyTouchAction;
+    };
+  }, []);
 
   // Video resize observer
   useEffect(() => {
@@ -102,30 +263,31 @@ export default function RehabSession() {
 
   // Voice & hold logic when angle changes
   useEffect(() => {
-    if (!sessionStarted || !isActive || currentAngle === 0) return;
+    if (!sessionStarted || !isActive || !hasValidAngle || sessionComplete) return;
 
     const now = Date.now();
     const isThrottled = now - lastFeedbackTimeRef.current < 3000;
 
-    if (angleResult.status === 'achieved') {
+    if (angleResult.status === 'achieved' && repArmed) {
       if (!isHolding) {
         setIsHolding(true);
-        setHoldCountdown(holdSeconds);
+        setHoldCountdown(effectiveHoldSeconds);
         if (!isThrottled || lastFeedbackRef.current !== 'achieved') {
-          speak(exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持');
-          setFeedbackMessage(`✅ 達到目標！保持 ${holdSeconds} 秒`);
+          speak(voiceText('achieved'), false, voiceLocale);
+          setFeedbackMessage(`✅ 達到目標！保持 ${effectiveHoldSeconds} 秒`);
           setFeedbackType('success');
           lastFeedbackRef.current = 'achieved';
           lastFeedbackTimeRef.current = now;
         }
         // Hold countdown
-        let count = holdSeconds;
+        let count = effectiveHoldSeconds;
         holdTimerRef.current = setInterval(() => {
           count--;
           setHoldCountdown(count);
           if (count <= 0) {
             clearInterval(holdTimerRef.current!);
             setIsHolding(false);
+            setRepArmed(false);
             // Count rep
             setCurrentRep(prev => {
               const next = prev + 1;
@@ -135,11 +297,12 @@ export default function RehabSession() {
                   const nextSet = prevSet + 1;
                   if (nextSet > totalSets) {
                     setSessionComplete(true);
-                    speak(exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！');
+                    setIsActive(false);
+                    speak(voiceText('complete'), false, voiceLocale);
                     setFeedbackMessage('🎉 訓練完成！');
                     setFeedbackType('success');
                   } else {
-                    speak(`第 ${prevSet} 組完成，請休息一下`);
+                    speak(voiceText('setComplete', prevSet), false, voiceLocale);
                     setFeedbackMessage(`第 ${prevSet} 組完成，準備下一組`);
                     setFeedbackType('info');
                   }
@@ -147,7 +310,7 @@ export default function RehabSession() {
                 });
                 return 0;
               }
-              speak(`第 ${next} 次`);
+              speak(voiceText('repComplete', next), false, voiceLocale);
               setFeedbackMessage(`第 ${next} 次完成`);
               setFeedbackType('info');
               return next;
@@ -162,13 +325,20 @@ export default function RehabSession() {
         holdTimerRef.current = null;
       }
 
+      // Re-arm counting only after leaving target zone, preventing duplicate counts
+      // while user is still holding around target angle.
+      const absDeviation = Math.abs(currentAngle - targetAngle);
+      if (!repArmed && absDeviation > effectiveTolerance + repRearmMargin) {
+        setRepArmed(true);
+      }
+
       if (!isThrottled) {
         if (angleResult.status === 'below') {
-          speak(exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度');
+          speak(voiceText('tooLow'), false, voiceLocale);
           setFeedbackMessage('📈 請繼續加大動作幅度');
           setFeedbackType('warning');
         } else if (angleResult.status === 'above') {
-          speak(exercise?.voicePrompts.tooHigh ?? '請稍微放鬆一些');
+          speak(voiceText('tooHigh'), false, voiceLocale);
           setFeedbackMessage('📉 請稍微放鬆一些');
           setFeedbackType('warning');
         }
@@ -176,27 +346,45 @@ export default function RehabSession() {
         lastFeedbackRef.current = angleResult.status;
       }
     }
-  }, [angleResult.status, currentAngle]);
+  }, [
+    angleResult.status,
+    currentAngle,
+    hasValidAngle,
+    sessionStarted,
+    isActive,
+    sessionComplete,
+    repArmed,
+    effectiveTolerance,
+    effectiveHoldSeconds,
+    totalReps,
+    totalSets,
+    targetAngle,
+    exercise,
+    voiceLocale,
+    voiceText,
+    speak,
+  ]);
 
   // Start session
   const handleStart = () => {
     setIsActive(true);
     setSessionStarted(true);
+    setRepArmed(true);
     setFeedbackMessage(exercise?.voicePrompts.start ?? '請開始動作');
     setFeedbackType('info');
-    speak(exercise?.voicePrompts.start ?? '請開始動作');
+    speak(voiceText('start'), true, voiceLocale);
   };
 
   const handlePause = () => {
     setIsActive(false);
-    speak('訓練已暫停');
+    speak(voiceText('paused'), true, voiceLocale);
     setFeedbackMessage('訓練已暫停');
     setFeedbackType('info');
   };
 
   const handleResume = () => {
     setIsActive(true);
-    speak('繼續訓練');
+    speak(voiceText('resume'), true, voiceLocale);
     setFeedbackMessage('繼續訓練');
     setFeedbackType('info');
   };
@@ -207,6 +395,7 @@ export default function RehabSession() {
     setSessionComplete(false);
     setIsHolding(false);
     setHoldCountdown(0);
+    setRepArmed(true);
     setIsActive(true);
     setSessionStarted(true);
   };
@@ -235,12 +424,12 @@ export default function RehabSession() {
   }
 
   const angleColor =
-    angleResult.status === 'achieved' ? '#66BB6A' :
-    angleResult.status === 'below' ? '#EF5350' :
+    uiAngleResult.status === 'achieved' ? '#66BB6A' :
+    uiAngleResult.status === 'below' ? '#EF5350' :
     '#FFA726';
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#111D2D' }}>
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#111D2D' }}>
       {/* Top Navigation Bar */}
       <div className="flex items-center justify-between px-5 py-4" style={{ background: '#1A2840', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button
@@ -260,11 +449,23 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setVoiceLocale(prev => (prev === 'zh-TW' ? 'nan-TW' : 'zh-TW'))}
+            className="px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
+            style={{ color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.2)', fontSize: 12, fontWeight: 700 }}
+            title="切換語音語言"
+          >
+            {voiceLocale === 'zh-TW' ? '中文' : '閩南語'}
+          </button>
           {/* FPS indicator */}
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>
               <Wifi size={12} style={{ color: '#66BB6A' }} />
               <span style={{ fontSize: 11, color: '#66BB6A' }}>{fps}fps</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>· {keypoints.length}pts</span>
+              <span style={{ fontSize: 11, color: hasValidAngle ? '#69F0AE' : '#FFA726' }}>
+                · angle {hasValidAngle ? 'ok' : '--'}
+              </span>
             </div>
           )}
           <button
@@ -302,7 +503,7 @@ export default function RehabSession() {
             keypoints={keypoints}
             videoWidth={videoDimensions.width}
             videoHeight={videoDimensions.height}
-            highlightJoints={exercise.joints}
+            highlightJoints={activeJoints}
           />
 
           {/* Loading / Error Overlay */}
@@ -371,7 +572,7 @@ export default function RehabSession() {
               >
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>即時角度</div>
                 <div style={{ color: angleColor, fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>
-                  {currentAngle}°
+                  {hasValidAngle ? `${uiAngle}°` : '--'}
                 </div>
               </motion.div>
 
@@ -395,10 +596,14 @@ export default function RehabSession() {
                 style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>目標差距</div>
                 <div style={{
-                  color: angleResult.status === 'achieved' ? '#66BB6A' : '#FFA726',
+                  color: uiAngleResult.status === 'achieved' ? '#66BB6A' : '#FFA726',
                   fontSize: 22, fontWeight: 700, lineHeight: 1.2
                 }}>
-                  {angleResult.status === 'achieved' ? '✓ 達標' : `${Math.abs(angleResult.deviation)}°`}
+                  {!hasValidAngle
+                    ? '追蹤中...'
+                    : uiAngleResult.status === 'achieved'
+                      ? '✓ 達標'
+                      : `${Math.abs(uiAngleResult.deviation)}°`}
                 </div>
               </div>
             </div>
@@ -448,9 +653,9 @@ export default function RehabSession() {
           {/* Angle Gauge */}
           <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
             <AngleGauge
-              currentAngle={sessionStarted ? currentAngle : 0}
+              currentAngle={sessionStarted ? uiAngle : 0}
               targetAngle={targetAngle}
-              tolerance={tolerance}
+              tolerance={effectiveTolerance}
               size={220}
             />
           </div>
@@ -524,8 +729,8 @@ export default function RehabSession() {
             <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 8 }}>訓練資訊</div>
             {[
               { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
-              { label: '容許誤差', value: `±${tolerance}°`, color: 'rgba(255,255,255,0.6)' },
-              { label: '保持時間', value: `${holdSeconds} 秒`, color: 'rgba(255,255,255,0.6)' },
+              { label: '容許誤差', value: `±${effectiveTolerance}°`, color: 'rgba(255,255,255,0.6)' },
+              { label: '保持時間', value: `${effectiveHoldSeconds} 秒`, color: 'rgba(255,255,255,0.6)' },
               { label: '頻率', value: prescription?.frequency ?? '每天兩次', color: 'rgba(255,255,255,0.6)' },
             ].map(item => (
               <div key={item.label} className="flex justify-between items-center mb-2.5">

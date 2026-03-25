@@ -16,6 +16,95 @@ export interface PoseDetectionState {
   fps: number;
 }
 
+let tfReadyPromise: Promise<void> | null = null;
+let poseDetectionModulePromise: Promise<any> | null = null;
+let sharedDetectorPromise: Promise<any> | null = null;
+let sharedDetector: any = null;
+
+const ensureTfReady = async () => {
+  if (!tfReadyPromise) {
+    tfReadyPromise = (async () => {
+      const tf = await import('@tensorflow/tfjs');
+      await tf.ready();
+    })();
+  }
+  await tfReadyPromise;
+};
+
+const getPoseDetectionModule = async () => {
+  if (!poseDetectionModulePromise) {
+    poseDetectionModulePromise = import('@tensorflow-models/pose-detection');
+  }
+  return poseDetectionModulePromise;
+};
+
+const createDetectorWithFallback = async () => {
+  await ensureTfReady();
+  const poseDetection = await getPoseDetectionModule();
+
+  // Fastest startup first (bundled model, no remote assets).
+  try {
+    return await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      {
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        enableSmoothing: true,
+      }
+    );
+  } catch (e) {
+    console.warn('MoveNet failed, fallback to BlazePose tfjs.', e);
+  }
+
+  try {
+    return await poseDetection.createDetector(
+      poseDetection.SupportedModels.BlazePose,
+      {
+        runtime: 'tfjs',
+        modelType: 'full',
+        enableSmoothing: true,
+      }
+    );
+  } catch (e) {
+    console.warn('BlazePose tfjs failed, fallback to mediapipe runtime.', e);
+  }
+
+  return await poseDetection.createDetector(
+    poseDetection.SupportedModels.BlazePose,
+    {
+      runtime: 'mediapipe',
+      solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/pose',
+      modelType: 'full',
+      enableSmoothing: true,
+    }
+  );
+};
+
+const getSharedDetector = async () => {
+  if (sharedDetector) return sharedDetector;
+  if (!sharedDetectorPromise) {
+    sharedDetectorPromise = createDetectorWithFallback()
+      .then((detector) => {
+        sharedDetector = detector;
+        return detector;
+      })
+      .catch((err) => {
+        sharedDetectorPromise = null;
+        throw err;
+      });
+  }
+  return sharedDetectorPromise;
+};
+
+const resetSharedDetector = () => {
+  try {
+    sharedDetector?.dispose?.();
+  } catch {
+    // no-op
+  }
+  sharedDetector = null;
+  sharedDetectorPromise = null;
+};
+
 export function usePoseDetection(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
@@ -33,6 +122,7 @@ export function usePoseDetection(
   const lastFrameTime = useRef<number>(0);
   const frameCount = useRef<number>(0);
   const fpsRef = useRef<number>(0);
+  const frameErrorCount = useRef<number>(0);
 
   const stopDetection = useCallback(() => {
     if (rafRef.current) {
@@ -45,6 +135,8 @@ export function usePoseDetection(
     setState(prev => ({ ...prev, status: 'loading', errorMessage: '' }));
 
     try {
+      const detectorPromise = getSharedDetector();
+
       // Request camera stream (front camera for iPad)
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -59,28 +151,15 @@ export function usePoseDetection(
       if (!video) return;
 
       video.srcObject = stream;
-      await new Promise<void>((resolve) => {
+      const videoReadyPromise = new Promise<void>((resolve) => {
         video.onloadedmetadata = () => {
           video.play();
           resolve();
         };
       });
 
-      // Dynamically import TensorFlow.js to avoid blocking initial render
-      setState(prev => ({ ...prev, status: 'loading' }));
-
-      const tf = await import('@tensorflow/tfjs');
-      await tf.ready();
-
-      const poseDetection = await import('@tensorflow-models/pose-detection');
-
-      const detector = await poseDetection.createDetector(
-        poseDetection.SupportedModels.MoveNet,
-        {
-          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
-          enableSmoothing: true,
-        }
-      );
+      await Promise.all([videoReadyPromise, detectorPromise]);
+      const detector = await detectorPromise;
 
       detectorRef.current = detector;
       setState(prev => ({ ...prev, status: 'detecting' }));
@@ -108,11 +187,12 @@ export function usePoseDetection(
           }
 
           if (poses.length > 0) {
-            const keypoints: Keypoint[] = poses[0].keypoints.map((kp: any) => ({
+            const keypoints: Keypoint[] = poses[0].keypoints.map((kp: any, index: number) => ({
               name: kp.name,
               x: kp.x,
               y: kp.y,
               score: kp.score,
+              index,
             }));
 
             setState(prev => ({
@@ -121,9 +201,30 @@ export function usePoseDetection(
               status: 'detecting',
               fps: fpsRef.current,
             }));
+            frameErrorCount.current = 0;
+          } else {
+            setState(prev => ({
+              ...prev,
+              keypoints: [],
+              status: 'detecting',
+              fps: fpsRef.current,
+            }));
           }
-        } catch {
-          // Silent: single frame error, keep loop going
+        } catch (err) {
+          frameErrorCount.current += 1;
+          if (frameErrorCount.current % 30 === 0) {
+            console.warn('Pose frame estimation repeatedly failed:', err);
+          }
+          if (frameErrorCount.current > 120) {
+            resetSharedDetector();
+            setState(prev => ({
+              ...prev,
+              status: 'error',
+              errorMessage: '姿態偵測暫時失敗，請按重試或重新整理頁面',
+            }));
+            stopDetection();
+            return;
+          }
         }
 
         rafRef.current = requestAnimationFrame(detect);
@@ -145,7 +246,8 @@ export function usePoseDetection(
 
   const stopCamera = useCallback(() => {
     stopDetection();
-    detectorRef.current = null;
+    // Keep shared detector for next start to reduce warm-up latency.
+    detectorRef.current = sharedDetector;
 
     const video = videoRef.current;
     if (video?.srcObject) {
@@ -160,6 +262,25 @@ export function usePoseDetection(
       fps: 0,
     });
   }, [videoRef, stopDetection]);
+
+  useEffect(() => {
+    // Warm up model in idle time so first "start" feels instant.
+    const warmup = () => {
+      void getSharedDetector().catch(() => {
+        // ignore; start flow still has fallback + error UI
+      });
+    };
+
+    const idleId = (window as any).requestIdleCallback?.(warmup, { timeout: 1200 });
+    if (!(window as any).requestIdleCallback) {
+      const timer = window.setTimeout(warmup, 200);
+      return () => window.clearTimeout(timer);
+    }
+
+    return () => {
+      (window as any).cancelIdleCallback?.(idleId);
+    };
+  }, []);
 
   useEffect(() => {
     if (active) {

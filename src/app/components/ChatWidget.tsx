@@ -1,17 +1,48 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { mockMessages, mockDoctors, mockTherapists } from '../data/mockData';
 
 export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole: string, currentUserId: string }) => {
   const [newMessage, setNewMessage] = useState('');
+  const messageEndRef = useRef<HTMLDivElement | null>(null);
 
-  // 過濾出跟這個使用者有關的訊息
-  const myMessages = mockMessages.filter(
-    (msg) => msg.receiverId === currentUserId || msg.senderId === currentUserId
+  const initialMessages = useMemo(
+    () =>
+      mockMessages.filter(
+        (msg) => msg.receiverId === currentUserId || msg.senderId === currentUserId
+      ),
+    [currentUserId]
   );
+  const [messages, setMessages] = useState(initialMessages);
+
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [initialMessages]);
+
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const getDefaultReceiver = () => {
+    if (currentUserRole === 'doctor') {
+      return mockTherapists[0]?.id ?? 'T001';
+    }
+    return mockDoctors[0]?.id ?? 'D001';
+  };
 
   const handleSend = () => {
-    if (!newMessage.trim()) return;
-    alert(`模擬發送訊息：${newMessage}`);
+    const content = newMessage.trim();
+    if (!content) return;
+
+    const nextMessage = {
+      id: `local-${Date.now()}`,
+      senderId: currentUserId,
+      receiverId: getDefaultReceiver(),
+      senderRole: currentUserRole as 'doctor' | 'patient' | 'family' | 'therapist',
+      content,
+      timestamp: new Date().toISOString(),
+      isRead: true,
+    };
+    setMessages((prev) => [...prev, nextMessage]);
     setNewMessage('');
   };
 
@@ -26,7 +57,7 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
 
       {/* 訊息顯示區 (對話泡泡) */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-        {myMessages.map((msg) => {
+        {messages.map((msg) => {
           const isMe = msg.senderId === currentUserId;
           return (
             <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
@@ -45,6 +76,7 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
             </div>
           );
         })}
+        <div ref={messageEndRef} />
       </div>
 
       {/* 輸入框 */}
@@ -55,7 +87,7 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
           onChange={(e) => setNewMessage(e.target.value)}
           placeholder="輸入訊息..."
           className="flex-1 bg-gray-100 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
         />
         <button 
           onClick={handleSend}

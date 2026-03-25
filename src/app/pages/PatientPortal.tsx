@@ -1,7 +1,6 @@
 // ============================================================
 // PatientPortal — 長者端主頁 (專業雙欄固定版)
 // ============================================================
-import { ChatWidget } from '../components/ChatWidget';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -11,10 +10,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import {
   mockPatients, mockPrescriptions, mockExercises,
-  mockSessionRecords, mockAngleProgress
+  mockSessionRecords, mockAngleProgress, mockWeeklyActivity
 } from '../data/mockData';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar, CartesianGrid, LineChart, Line
 } from 'recharts';
 
 const PATIENT = mockPatients[0]; // 王大明
@@ -50,6 +50,24 @@ export default function PatientPortal() {
   const completedToday = todaySessions.length;
   const totalToday = exercises.length;
   const streakDays = 7;
+  const patientSessions = mockSessionRecords.filter(s => s.patientId === PATIENT.id);
+  const avgAngle = Math.round(
+    patientSessions.reduce((sum, s) => sum + s.avgAngle, 0) / (patientSessions.length || 1)
+  );
+  const maxAngle = Math.max(...patientSessions.map((s) => s.maxAngle), 0);
+  const totalMinutes = patientSessions.reduce((sum, s) => sum + s.duration, 0);
+  const avgScore = Math.round(
+    patientSessions.reduce((sum, s) => sum + s.score, 0) / (patientSessions.length || 1)
+  );
+  const avgSessionMinutes = Math.round(totalMinutes / (patientSessions.length || 1));
+  const weeklySessions = mockWeeklyActivity.reduce((sum, day) => sum + day.sessions, 0);
+  const weeklyCompletionAvg = Math.round(
+    mockWeeklyActivity.reduce((sum, day) => sum + day.completion, 0) / (mockWeeklyActivity.length || 1)
+  );
+  const recoveryConfidence = Math.min(
+    99,
+    Math.round((PATIENT.completionRate * 0.45) + (avgScore * 0.35) + (Math.min(avgAngle, 120) / 120) * 20)
+  );
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -111,19 +129,18 @@ export default function PatientPortal() {
         </div>
       </div>
 
-      {/* ── 主佈覽區：雙欄排版 ── */}
+      {/* ── 主佈覽區 ── */}
       <div className="max-w-7xl mx-auto px-8 -mt-10 pb-12">
-        <div className="flex flex-col lg:flex-row gap-8">
-          
-          {/* 左側：核心功能與圖表 (佔據 1 flex) */}
-          <div className="flex-1 space-y-6">
+        <div className="space-y-6">
             
             {/* 數據小卡 */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 { label: '今日完成', value: `${completedToday}/${totalToday}`, icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
                 { label: '連續訓練', value: `${streakDays}天`, icon: Flame, color: 'text-orange-500', bg: 'bg-orange-50' },
                 { label: '完成率', value: `${PATIENT.completionRate}%`, icon: Target, color: 'text-blue-500', bg: 'bg-blue-50' },
+                { label: '週訓練次數', value: `${weeklySessions}次`, icon: Calendar, color: 'text-purple-500', bg: 'bg-purple-50' },
+                { label: '恢復信心', value: `${recoveryConfidence}%`, icon: Activity, color: 'text-teal-600', bg: 'bg-teal-50' },
               ].map((s) => (
                 <div key={s.label} className={`${s.bg} p-4 rounded-3xl border border-white shadow-sm flex flex-col items-center`}>
                   <s.icon className={s.color} size={24} />
@@ -201,28 +218,68 @@ export default function PatientPortal() {
                 </ResponsiveContainer>
               </div>
             </div>
-          </div>
 
-          {/* 右側：固定訊息面板 (佔據 400px) */}
-          <div className="w-full lg:w-[400px] flex-shrink-0">
-            <div className="sticky top-6 space-y-6">
-              {/* 聊天室組件 */}
-              <div className="bg-white rounded-[2rem] shadow-xl border border-blue-50 overflow-hidden">
-                <ChatWidget currentUserRole="patient" currentUserId="P001" />
+            {/* 進階分析卡 */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-bold text-gray-800">進階分析</h3>
+                <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">最近 7 天</span>
               </div>
 
-              {/* 激勵卡片 */}
-              <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[2rem] text-white shadow-lg">
-                <Award className="mb-4 opacity-80" size={32} />
-                <p className="font-bold text-xl">做得很好！</p>
-                <p className="text-blue-100 text-sm mt-2 leading-relaxed">
-                  您的膝蓋角度本週平均提升了 8°，這對恢復非常有幫助。繼續保持，您正在變強！
-                </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                {[
+                  { label: '平均角度', value: `${avgAngle}°`, tone: 'text-blue-600', bg: 'bg-blue-50' },
+                  { label: '最高角度', value: `${maxAngle}°`, tone: 'text-purple-600', bg: 'bg-purple-50' },
+                  { label: '總訓練時長', value: `${totalMinutes} 分`, tone: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: '平均分數', value: `${avgScore}`, tone: 'text-orange-600', bg: 'bg-orange-50' },
+                  { label: '平均每次時長', value: `${avgSessionMinutes} 分`, tone: 'text-indigo-600', bg: 'bg-indigo-50' },
+                  { label: '週平均達標', value: `${weeklyCompletionAvg}%`, tone: 'text-pink-600', bg: 'bg-pink-50' },
+                ].map((kpi) => (
+                  <div key={kpi.label} className="rounded-2xl border border-gray-100 p-3">
+                    <div className={`inline-flex px-2 py-1 rounded-lg text-[11px] font-bold ${kpi.bg} ${kpi.tone}`}>
+                      {kpi.label}
+                    </div>
+                    <div className="mt-2 text-xl font-black text-gray-800 tabular-nums">{kpi.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="h-48 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={mockWeeklyActivity}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 8px 12px rgba(0,0,0,0.08)' }} />
+                    <Bar dataKey="sessions" fill="#3B82F6" radius={[6, 6, 0, 0]} />
+                    <ReferenceLine y={4} stroke="#F59E0B" strokeDasharray="3 3" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="h-44 w-full mt-5">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={mockWeeklyActivity}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                    <Line type="monotone" dataKey="completion" stroke="#6366F1" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="duration" stroke="#14B8A6" strokeWidth={2.5} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
-          </div>
 
-        </div>
+            {/* 激勵卡片 */}
+            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[2rem] text-white shadow-lg">
+              <Award className="mb-4 opacity-80" size={32} />
+              <p className="font-bold text-xl">做得很好！</p>
+              <p className="text-blue-100 text-sm mt-2 leading-relaxed">
+                您的膝蓋角度本週平均提升了 8°，這對恢復非常有幫助。繼續保持，您正在變強！
+              </p>
+            </div>
+          </div>
       </div>
     </div>
   );

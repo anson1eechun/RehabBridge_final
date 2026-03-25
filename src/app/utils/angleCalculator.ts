@@ -9,7 +9,44 @@ export interface Keypoint {
   x: number;
   y: number;
   score?: number;
+  index?: number;
 }
+
+export type JointRef = string | number;
+
+const BLAZE_TO_MOVENET_INDEX: Record<number, number> = {
+  // Arms
+  11: 5, 12: 6, 13: 7, 14: 8, 15: 9, 16: 10,
+  // Hips / legs
+  23: 11, 24: 12, 25: 13, 26: 14, 27: 15, 28: 16,
+  // Approximate feet to ankle in MoveNet
+  29: 15, 30: 16, 31: 15, 32: 16,
+};
+
+function isMoveNetLike(keypoints: Keypoint[]): boolean {
+  if (!keypoints.length) return false;
+  const maxIndex = Math.max(...keypoints.map((kp, i) => kp.index ?? i));
+  return maxIndex <= 16;
+}
+
+const MIRROR_INDEX_MAP: Record<number, number> = {
+  0: 0,
+  1: 4, 2: 5, 3: 6,
+  4: 1, 5: 2, 6: 3,
+  7: 8, 8: 7,
+  9: 10, 10: 9,
+  11: 12, 12: 11,
+  13: 14, 14: 13,
+  15: 16, 16: 15,
+  17: 18, 18: 17,
+  19: 20, 20: 19,
+  21: 22, 22: 21,
+  23: 24, 24: 23,
+  25: 26, 26: 25,
+  27: 28, 28: 27,
+  29: 30, 30: 29,
+  31: 32, 32: 31,
+};
 
 export interface AngleResult {
   angle: number;
@@ -70,9 +107,55 @@ export function getAngleResult(
  */
 export function findKeypoint(
   keypoints: Keypoint[],
-  name: string
+  ref: JointRef
 ): Keypoint | undefined {
-  return keypoints.find((kp) => kp.name === name);
+  if (typeof ref === 'number') {
+    const direct = keypoints.find((kp) => kp.index === ref) ?? keypoints[ref];
+    if (direct) return direct;
+
+    // If current detector only gives 17 points, map BlazePose index to MoveNet index.
+    if (isMoveNetLike(keypoints) && ref > 16) {
+      const mapped = BLAZE_TO_MOVENET_INDEX[ref];
+      if (mapped !== undefined) {
+        return keypoints.find((kp) => kp.index === mapped) ?? keypoints[mapped];
+      }
+    }
+    return undefined;
+  }
+  return keypoints.find((kp) => kp.name === ref);
+}
+
+export function mirrorJointRef(ref: JointRef): JointRef {
+  if (typeof ref === 'number') {
+    return MIRROR_INDEX_MAP[ref] ?? ref;
+  }
+
+  if (ref.startsWith('left_')) return ref.replace('left_', 'right_');
+  if (ref.startsWith('right_')) return ref.replace('right_', 'left_');
+  if (ref === 'mouth_left') return 'mouth_right';
+  if (ref === 'mouth_right') return 'mouth_left';
+  return ref;
+}
+
+export function mirrorJointTriplet(
+  joints: [JointRef, JointRef, JointRef]
+): [JointRef, JointRef, JointRef] {
+  return [
+    mirrorJointRef(joints[0]),
+    mirrorJointRef(joints[1]),
+    mirrorJointRef(joints[2]),
+  ];
+}
+
+export function getJointTripletConfidence(
+  keypoints: Keypoint[],
+  joints: [JointRef, JointRef, JointRef]
+): number {
+  const p1 = findKeypoint(keypoints, joints[0]);
+  const p2 = findKeypoint(keypoints, joints[1]);
+  const p3 = findKeypoint(keypoints, joints[2]);
+  if (!p1 || !p2 || !p3) return 0;
+  return ((p1.score ?? 0) + (p2.score ?? 0) + (p3.score ?? 0)) / 3;
 }
 
 /**
@@ -80,7 +163,7 @@ export function findKeypoint(
  */
 export function extractAngleFromKeypoints(
   keypoints: Keypoint[],
-  jointNames: [string, string, string], // [p1, vertex, p2]
+  jointNames: [JointRef, JointRef, JointRef], // [p1, vertex, p2]
   minConfidence = 0.3
 ): number | null {
   const [p1Name, vertexName, p2Name] = jointNames;
@@ -100,23 +183,40 @@ export function extractAngleFromKeypoints(
 // ─── Skeleton Connection Map ────────────────────────────────
 // MoveNet keypoint indices for connection rendering
 export const POSE_CONNECTIONS: [number, number][] = [
+  // BlazePose (33 keypoints) connections
   // Face
-  [0, 1], [0, 2], [1, 3], [2, 4],
-  // Body
-  [5, 6],   // shoulders
-  [5, 7], [7, 9],   // left arm
-  [6, 8], [8, 10],  // right arm
-  [5, 11], [6, 12], // torso sides
-  [11, 12], // hips
-  [11, 13], [13, 15], // left leg
-  [12, 14], [14, 16], // right leg
+  [0, 1], [1, 2], [2, 3], [3, 7],
+  [0, 4], [4, 5], [5, 6], [6, 8],
+  [9, 10],
+  // Torso
+  [11, 12], [11, 23], [12, 24], [23, 24],
+  // Left arm
+  [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+  // Right arm
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  // Left leg
+  [23, 25], [25, 27], [27, 29], [29, 31], [27, 31],
+  // Right leg
+  [24, 26], [26, 28], [28, 30], [30, 32], [28, 32],
 ];
 
 export const KEYPOINT_NAMES = [
-  'nose', 'left_eye', 'right_eye', 'left_ear', 'right_ear',
-  'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
-  'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
-  'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
+  'nose',
+  'left_eye_inner', 'left_eye', 'left_eye_outer',
+  'right_eye_inner', 'right_eye', 'right_eye_outer',
+  'left_ear', 'right_ear',
+  'mouth_left', 'mouth_right',
+  'left_shoulder', 'right_shoulder',
+  'left_elbow', 'right_elbow',
+  'left_wrist', 'right_wrist',
+  'left_pinky', 'right_pinky',
+  'left_index', 'right_index',
+  'left_thumb', 'right_thumb',
+  'left_hip', 'right_hip',
+  'left_knee', 'right_knee',
+  'left_ankle', 'right_ankle',
+  'left_heel', 'right_heel',
+  'left_foot_index', 'right_foot_index',
 ];
 
 export const KEYPOINT_INDEX: Record<string, number> = Object.fromEntries(

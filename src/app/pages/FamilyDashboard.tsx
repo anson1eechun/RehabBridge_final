@@ -5,18 +5,17 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ArrowLeft, Bell, Activity, CheckCircle, TrendingUp, 
-  Calendar, Heart, ChevronRight, X, MessageCircle, Award
+  Calendar, Heart, ChevronRight, X, Award
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, CartesianGrid, ReferenceLine
+  ResponsiveContainer, CartesianGrid, ReferenceLine, LineChart, Line
 } from 'recharts';
 import {
   mockPatients, mockSessionRecords, mockNotifications,
   mockAngleProgress, mockWeeklyActivity
 } from '../data/mockData';
-import { ChatWidget } from '../components/ChatWidget';
 
 const PATIENT = mockPatients[0]; // 王大明
 const FAMILY_NAME = '王小美';
@@ -33,6 +32,12 @@ export default function FamilyDashboard() {
 
   const lastSession = recentSessions[0];
   const avgScore = Math.round(recentSessions.reduce((sum, s) => sum + s.score, 0) / (recentSessions.length || 1));
+  const totalCareMinutes = recentSessions.reduce((sum, s) => sum + s.duration, 0);
+  const weeklyCompletionAvg = Math.round(
+    mockWeeklyActivity.reduce((sum, d) => sum + d.completion, 0) / (mockWeeklyActivity.length || 1)
+  );
+  const weeklySessionCount = mockWeeklyActivity.reduce((sum, d) => sum + d.sessions, 0);
+  const careStability = Math.round((PATIENT.completionRate * 0.6) + (avgScore * 0.4));
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -102,20 +107,22 @@ export default function FamilyDashboard() {
         </div>
       </div>
 
-      {/* ── 主佈局區：雙欄排版 ── */}
+      {/* ── 主佈局區 ── */}
       <div className="max-w-7xl mx-auto px-8 -mt-10 pb-12">
-        <div className="flex flex-col lg:flex-row gap-8 items-start">
+        <div className="space-y-6">
           
-          {/* 左側：數據分析與頁籤 (佔據主要空間) */}
-          <div className="flex-1 space-y-6 w-full">
+          {/* 數據分析與頁籤 */}
+          <div className="space-y-6 w-full">
             
             {/* 核心指標卡片 */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
               {[
                 { label: '完成率', value: `${PATIENT.completionRate}%`, icon: CheckCircle, color: '#00897B', bg: '#E0F2F1' },
                 { label: '平均分數', value: `${avgScore}`, icon: TrendingUp, color: '#1976D2', bg: '#E3F2FD' },
                 { label: '最高角度', value: `${lastSession?.maxAngle ?? 0}°`, icon: Activity, color: '#7B1FA2', bg: '#F3E5F5' },
                 { label: '連續天數', value: '7天', icon: Heart, color: '#C62828', bg: '#FFEBEE' },
+                { label: '本週總時長', value: `${totalCareMinutes}分`, icon: Calendar, color: '#6D4C41', bg: '#EFEBE9' },
+                { label: '守護穩定度', value: `${careStability}%`, icon: Bell, color: '#00838F', bg: '#E0F7FA' },
               ].map((stat, i) => (
                 <motion.div key={stat.label} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}
                   className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm text-center"
@@ -185,6 +192,40 @@ export default function FamilyDashboard() {
                         </ResponsiveContainer>
                       </div>
                     </div>
+
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-5">
+                        <h3 className="font-bold text-gray-800">照護品質分析</h3>
+                        <span className="text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full">家庭觀測</span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3 mb-5">
+                        {[
+                          { label: '週平均達標', value: `${weeklyCompletionAvg}%` },
+                          { label: '本週總訓練', value: `${weeklySessionCount}次` },
+                          { label: '未讀提醒', value: `${unreadAlerts}則` },
+                        ].map((item) => (
+                          <div key={item.label} className="rounded-xl bg-gray-50 p-3 text-center">
+                            <div className="text-sm text-gray-400">{item.label}</div>
+                            <div className="text-xl font-bold text-gray-800 mt-1">{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="h-44 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={mockWeeklyActivity}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                            <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 12 }} />
+                            <YAxis hide />
+                            <Tooltip contentStyle={{ borderRadius: '12px', border: 'none' }} />
+                            <Line type="monotone" dataKey="completion" stroke="#00897B" strokeWidth={2.5} dot={{ r: 3 }} />
+                            <Line type="monotone" dataKey="sessions" stroke="#1976D2" strokeWidth={2.5} dot={{ r: 3 }} />
+                            <ReferenceLine y={80} stroke="#FFA726" strokeDasharray="3 3" />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -222,34 +263,14 @@ export default function FamilyDashboard() {
             </AnimatePresence>
           </div>
 
-          {/* 右側：固定訊息面板 (Sticky Sidebar) */}
-          <div className="w-full lg:w-[400px] flex-shrink-0">
-            <div className="sticky top-6 space-y-6">
-              
-              {/* 聊天室 */}
-              <div className="bg-white rounded-[2.5rem] shadow-xl border border-teal-50 overflow-hidden h-[500px] flex flex-col">
-                <div className="p-6 bg-teal-600 text-white flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-lg">聯繫醫療團隊</h3>
-                    <p className="text-teal-100 text-xs">詢問關於 {PATIENT.name} 的狀況</p>
-                  </div>
-                  <MessageCircle size={24} className="opacity-80" />
-                </div>
-                <div className="flex-1 overflow-hidden">
-                  <ChatWidget currentUserRole="family" currentUserId="F001" />
-                </div>
-              </div>
-
-              {/* 提醒卡片 */}
-              <div className="bg-gradient-to-br from-indigo-600 to-teal-700 p-6 rounded-[2.5rem] text-white shadow-lg relative overflow-hidden">
-                <Award className="absolute -bottom-4 -right-4 w-24 h-24 opacity-20" />
-                <div className="relative z-10">
-                  <p className="font-bold text-xl">全能守護者</p>
-                  <p className="text-white/80 text-sm mt-2 leading-relaxed">
-                    王大明 今天的訓練量已達標！陳醫師建議這兩天可以帶他去戶外走走，增加腿部耐力。
-                  </p>
-                </div>
-              </div>
+          {/* 提醒卡片 */}
+          <div className="bg-gradient-to-br from-indigo-600 to-teal-700 p-6 rounded-[2.5rem] text-white shadow-lg relative overflow-hidden">
+            <Award className="absolute -bottom-4 -right-4 w-24 h-24 opacity-20" />
+            <div className="relative z-10">
+              <p className="font-bold text-xl">全能守護者</p>
+              <p className="text-white/80 text-sm mt-2 leading-relaxed">
+                王大明 今天的訓練量已達標！陳醫師建議這兩天可以帶他去戶外走走，增加腿部耐力。
+              </p>
             </div>
           </div>
 

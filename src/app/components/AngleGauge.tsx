@@ -53,7 +53,7 @@ export function AngleGauge({
   const endDeg = startAngleDeg + sweepDeg;
 
   // Determine color based on status
-  const deviation = Math.abs(currentAngle - targetAngle);
+  const deviation = Math.abs(clampedCurrent - targetAngle);
   let gaugeColor = '#EF5350'; // red
   if (deviation <= tolerance) gaugeColor = '#66BB6A'; // green
   else if (deviation <= tolerance * 2.5) gaugeColor = '#FFA726'; // amber
@@ -88,7 +88,7 @@ export function AngleGauge({
             stroke={gaugeColor}
             strokeWidth={strokeWidth}
             strokeLinecap="round"
-            style={{ transition: 'all 0.15s ease-out', filter: `drop-shadow(0 0 6px ${gaugeColor}88)` }}
+            style={{ filter: `drop-shadow(0 0 6px ${gaugeColor}88)` }}
           />
         )}
 
@@ -112,7 +112,6 @@ export function AngleGauge({
           stroke="#FFFFFF"
           strokeWidth={3}
           strokeLinecap="round"
-          style={{ transition: 'all 0.15s ease-out' }}
         />
 
         {/* Center display */}
@@ -125,7 +124,7 @@ export function AngleGauge({
           fontWeight="700"
           fontFamily="system-ui, sans-serif"
         >
-          {currentAngle}°
+          {Math.round(clampedCurrent)}°
         </text>
         <text
           x={cx}

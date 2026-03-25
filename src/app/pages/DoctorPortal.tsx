@@ -13,11 +13,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
-  Tooltip, CartesianGrid, LineChart, Line, ReferenceLine
+  Tooltip, CartesianGrid, LineChart, Line, ReferenceLine,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
 import {
   mockPatients, mockPrescriptions, mockExercises,
-  mockSessionRecords, mockDoctors, mockSystemStats
+  mockSessionRecords, mockDoctors, mockSystemStats, mockCategoryStats, mockAlertStats
 } from '../data/mockData';
 
 const DOCTOR = mockDoctors[0];
@@ -39,6 +40,9 @@ export default function DoctorPortal() {
     { name: '王大明', compliance: 85, avgAngle: 118, target: 120, score: 89 },
     { name: '李秀英', compliance: 72, avgAngle: 85, target: 90, score: 82 },
     { name: '陳阿蘭', compliance: 45, avgAngle: 65, target: 90, score: 61 },
+    { name: '林志華', compliance: 78, avgAngle: 92, target: 95, score: 87 },
+    { name: '郭美玲', compliance: 69, avgAngle: 99, target: 105, score: 79 },
+    { name: '吳建成', compliance: 58, avgAngle: 70, target: 90, score: 68 },
   ];
 
   const radarData = [
@@ -47,6 +51,57 @@ export default function DoctorPortal() {
     { metric: '訓練分數', A: 89, B: 82, C: 61 },
     { metric: '連續天數', A: 95, B: 68, C: 40 },
     { metric: '語音反應', A: 80, B: 75, C: 55 },
+  ];
+
+  const avgCompliance = Math.round(analyticsData.reduce((sum, item) => sum + item.compliance, 0) / analyticsData.length);
+  const avgScore = Math.round(analyticsData.reduce((sum, item) => sum + item.score, 0) / analyticsData.length);
+  const avgAngleGap = Math.round(
+    analyticsData.reduce((sum, item) => sum + Math.abs(item.target - item.avgAngle), 0) / analyticsData.length
+  );
+  const highRiskCount = analyticsData.filter(item => item.compliance < 60 || item.score < 70).length;
+  const activeRxCount = mockPrescriptions.filter((rx) => rx.active).length;
+  const avgSessionDuration = Math.round(
+    mockSessionRecords.reduce((sum, session) => sum + session.duration, 0) / (mockSessionRecords.length || 1)
+  );
+  const prescriptionCoverage = Math.round((activeRxCount / (patients.length * 2 || 1)) * 100);
+
+  const weeklyTrendData = [
+    { week: 'W1', completion: 62, score: 72, targetReached: 54 },
+    { week: 'W2', completion: 68, score: 76, targetReached: 61 },
+    { week: 'W3', completion: 70, score: 79, targetReached: 66 },
+    { week: 'W4', completion: 74, score: 82, targetReached: 71 },
+    { week: 'W5', completion: avgCompliance, score: avgScore, targetReached: 75 },
+  ];
+
+  const riskDistribution = [
+    { name: '低風險', value: analyticsData.filter(item => item.compliance >= 80 && item.score >= 85).length, color: '#66BB6A' },
+    { name: '中風險', value: analyticsData.filter(item => item.compliance >= 60 && item.compliance < 80).length, color: '#FFA726' },
+    { name: '高風險', value: analyticsData.filter(item => item.compliance < 60 || item.score < 70).length, color: '#EF5350' },
+  ];
+
+  const patientInsights = analyticsData
+    .map((item) => ({
+      ...item,
+      gap: item.target - item.avgAngle,
+      risk: item.compliance < 60 || item.score < 70 ? 'high' : item.compliance < 80 ? 'medium' : 'low',
+    }))
+    .sort((a, b) => {
+      const riskScore = (r: string) => (r === 'high' ? 3 : r === 'medium' ? 2 : 1);
+      return riskScore(b.risk) - riskScore(a.risk);
+    });
+
+  const categoryComparison = mockCategoryStats.map((c) => ({
+    category: c.category,
+    completion: c.avgCompletion,
+    dropRate: Math.round(c.dropRate),
+    duration: Math.round(c.avgDuration),
+  }));
+
+  const alertHotspots = [
+    { type: '角度不足', value: mockAlertStats.insufficientAngle, color: '#FB8C00' },
+    { type: '速度過快', value: mockAlertStats.excessiveSpeed, color: '#8E24AA' },
+    { type: '姿勢偏移', value: mockAlertStats.postureDistortion, color: '#E53935' },
+    { type: '成功達標', value: mockAlertStats.targetReached, color: '#43A047' },
   ];
 
   const selectedPatientData = selectedPatient ? mockPatients.find(p => p.id === selectedPatient) : null;
@@ -325,6 +380,24 @@ export default function DoctorPortal() {
         {/* ── Analytics Tab (保留完整 Recharts) ── */}
         {activeTab === 'analytics' && (
           <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {[
+                { label: '平均完成率', value: `${avgCompliance}%`, tone: '#5E35B1', bg: '#F3E5F5' },
+                { label: '平均訓練分數', value: `${avgScore}分`, tone: '#1976D2', bg: '#E3F2FD' },
+                { label: '平均角度差距', value: `${avgAngleGap}°`, tone: '#EF6C00', bg: '#FFF3E0' },
+                { label: '高風險個案', value: `${highRiskCount}位`, tone: '#C62828', bg: '#FFEBEE' },
+                { label: '處方覆蓋率', value: `${prescriptionCoverage}%`, tone: '#00897B', bg: '#E0F2F1' },
+                { label: '平均單次時長', value: `${avgSessionDuration}分`, tone: '#6D4C41', bg: '#EFEBE9' },
+              ].map((kpi) => (
+                <div key={kpi.label} className="rounded-2xl p-4 shadow-sm" style={{ background: 'white' }}>
+                  <div className="inline-flex px-2 py-1 rounded-lg mb-2 text-xs font-bold" style={{ color: kpi.tone, background: kpi.bg }}>
+                    {kpi.label}
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#1A2035' }}>{kpi.value}</div>
+                </div>
+              ))}
+            </div>
+
             <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
               <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 4 }}>患者完成率比較</h3>
               <ResponsiveContainer width="100%" height={160}>
@@ -333,22 +406,127 @@ export default function DoctorPortal() {
                   <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12, color: 'white' }} />
+                  <ReferenceLine y={80} stroke="#66BB6A" strokeDasharray="3 3" />
                   <Bar dataKey="compliance" fill="#7B1FA2" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="score" fill="#CE93D8" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>多維度評估</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="#E8ECF0" />
-                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: '#546E7A' }} />
-                  <Radar name="王大明" dataKey="A" stroke="#7B1FA2" fill="#7B1FA2" fillOpacity={0.15} />
-                  <Radar name="李秀英" dataKey="B" stroke="#1565C0" fill="#1565C0" fillOpacity={0.1} />
-                </RadarChart>
-              </ResponsiveContainer>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>動作類型表現對比</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={categoryComparison}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
+                    <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none' }} />
+                    <Bar dataKey="completion" fill="#5E35B1" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="dropRate" fill="#EF5350" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>異常與達標熱點</h3>
+                <div className="space-y-3">
+                  {alertHotspots.map((item) => (
+                    <div key={item.type}>
+                      <div className="flex justify-between mb-1">
+                        <span style={{ fontSize: 13, color: '#546E7A', fontWeight: 600 }}>{item.type}</span>
+                        <span style={{ fontSize: 13, color: '#1A2035', fontWeight: 700 }}>{item.value}</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-gray-100">
+                        <div
+                          className="h-2 rounded-full"
+                          style={{ width: `${Math.min(100, (item.value / mockAlertStats.targetReached) * 100)}%`, background: item.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>近五週趨勢</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
+                    <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <YAxis domain={[40, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <Tooltip contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12, color: 'white' }} />
+                    <Line type="monotone" dataKey="completion" stroke="#5E35B1" strokeWidth={3} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="score" stroke="#1565C0" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="targetReached" stroke="#43A047" strokeWidth={2.5} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>風險分層分佈</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={riskDistribution}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={82}
+                      paddingAngle={4}
+                    >
+                      {riskDistribution.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Legend iconType="circle" />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>多維度評估</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="#E8ECF0" />
+                    <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: '#546E7A' }} />
+                    <Radar name="王大明" dataKey="A" stroke="#7B1FA2" fill="#7B1FA2" fillOpacity={0.15} />
+                    <Radar name="李秀英" dataKey="B" stroke="#1565C0" fill="#1565C0" fillOpacity={0.1} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>個案洞察與優先級</h3>
+                <div className="space-y-3">
+                  {patientInsights.map((p) => (
+                    <div key={p.name} className="rounded-xl p-3 border" style={{ borderColor: '#EEF2F7', background: '#FAFBFD' }}>
+                      <div className="flex items-center justify-between">
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1A2035' }}>{p.name}</span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{
+                            background: p.risk === 'high' ? '#FFEBEE' : p.risk === 'medium' ? '#FFF3E0' : '#E8F5E9',
+                            color: p.risk === 'high' ? '#C62828' : p.risk === 'medium' ? '#E65100' : '#2E7D32',
+                          }}
+                        >
+                          {p.risk === 'high' ? '高優先' : p.risk === 'medium' ? '中優先' : '低優先'}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs" style={{ color: '#607D8B' }}>
+                        完成率 {p.compliance}% · 分數 {p.score} · 角度差 {Math.abs(p.gap)}°
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}

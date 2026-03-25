@@ -26,9 +26,30 @@ export function useVoiceCoach(options: VoiceCoachOptions = {}) {
   const lastSpokenRef = useRef<string>('');
   const lastSpokenTimeRef = useRef<number>(0);
   const enabledRef = useRef<boolean>(true);
+  const pickVoice = useCallback((targetLang: string) => {
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return undefined;
+
+    const normalized = targetLang.toLowerCase();
+    const exact = voices.find((v) => v.lang.toLowerCase() === normalized);
+    if (exact) return exact;
+
+    // Try same language family first (ex: nan-TW -> nan)
+    const family = normalized.split('-')[0];
+    const familyMatch = voices.find((v) => v.lang.toLowerCase().startsWith(family));
+    if (familyMatch) return familyMatch;
+
+    // Fallback to zh-TW / zh variants for better local pronunciation
+    const zhTw = voices.find((v) => v.lang.toLowerCase() === 'zh-tw');
+    if (zhTw) return zhTw;
+    const zhAny = voices.find((v) => v.lang.toLowerCase().startsWith('zh'));
+    if (zhAny) return zhAny;
+
+    return undefined;
+  }, []);
 
   const speak = useCallback(
-    (text: string, force = false) => {
+    (text: string, force = false, langOverride?: string) => {
       if (!enabledRef.current) return;
       if (!('speechSynthesis' in window)) return;
 
@@ -42,17 +63,23 @@ export function useVoiceCoach(options: VoiceCoachOptions = {}) {
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = lang;
+      const targetLang = langOverride ?? lang;
+      utterance.lang = targetLang;
       utterance.rate = rate;
       utterance.pitch = pitch;
       utterance.volume = volume;
+      const voice = pickVoice(targetLang);
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      }
 
       window.speechSynthesis.speak(utterance);
 
       lastSpokenRef.current = text;
       lastSpokenTimeRef.current = now;
     },
-    [lang, rate, pitch, volume, throttleMs]
+    [lang, rate, pitch, volume, throttleMs, pickVoice]
   );
 
   const stop = useCallback(() => {
@@ -68,6 +95,10 @@ export function useVoiceCoach(options: VoiceCoachOptions = {}) {
 
   // Clean up on unmount
   useEffect(() => {
+    if ('speechSynthesis' in window) {
+      // Prime voice list (Safari/iOS may populate lazily)
+      window.speechSynthesis.getVoices();
+    }
     return () => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
