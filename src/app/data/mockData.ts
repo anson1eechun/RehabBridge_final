@@ -170,10 +170,10 @@ export const mockExercises: Exercise[] = [
     /** 雅婷陪練：語氣偏口語、句長適合 TTS（見教育部臺灣閩南語常用詞等參考） */
     voicePromptsTai: {
       start: '慢慢彎就好，莫急啦',
-      tooLow: '閣彎入來一屑啦',
+      tooLow: '閣彎入來一屑仔啦',
       achieved: '好，定咧',
       complete: '先做到這啦',
-      tooHigh: '收一屑啦，莫硬撐',
+      tooHigh: '收一屑仔啦，莫硬撐',
     },
     bodyArea: '膝蓋', difficulty: 'easy'
   },

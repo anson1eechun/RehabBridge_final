@@ -1,14 +1,18 @@
 import type { Exercise } from '../data/mockData';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 
 // ============================================================
 // 雅婷 Yating TTS v2（國語 zh_en_*／台語 tai_*）
 // 開發：Vite 代理 /api/yating → 注入 Header key
-// 正式：VITE_YATING_API_KEY 直連（金鑰會進 bundle，僅 demo）
+// 正式 Web：VITE_YATING_API_KEY 直連（金鑰會進 bundle，僅 demo）
+// iOS／Android（Capacitor）：必須用 CapacitorHttp，因 WKWebView 的 fetch 受 CORS 限制，
+//   對 tts.api.yating.tw 的跨域請求常失敗；原生 HTTP 不受同源政策限制。
 //
 // 文件：https://developer.yating.tw/zh-TW/doc/tts-TTS%20%E8%AA%9E%E9%9F%B3%E5%90%88%E6%88%90v2
 // ============================================================
 
 const YATING_SPEECH_PATH = '/v2/speeches/short';
+const YATING_API_ORIGIN = 'https://tts.api.yating.tw';
 
 /** 雅婷「亦晴」系列：國語 zh_en_*／台語 tai_*（文件見官網語音表） */
 export const YATING_DEFAULT_MANDARIN_MODEL = 'zh_en_female_2';
@@ -44,7 +48,7 @@ function buildUrl(): string {
   if (import.meta.env.DEV) {
     return `/api/yating${YATING_SPEECH_PATH}`;
   }
-  return `https://tts.api.yating.tw${YATING_SPEECH_PATH}`;
+  return `${YATING_API_ORIGIN}${YATING_SPEECH_PATH}`;
 }
 
 export function wantsYatingFromEnv(): boolean {
@@ -126,6 +130,41 @@ export async function synthesizeYatingSpeech(
   };
 
   const key = import.meta.env.VITE_YATING_API_KEY?.trim();
+
+  /** iPad／iPhone IPA：WebView fetch 易被 CORS 擋，改用原生 CapacitorHttp */
+  if (Capacitor.isNativePlatform()) {
+    if (!key) {
+      throw new Error(
+        '雅婷 TTS：請在建置 IPA 前於 .env 設定 VITE_YATING_API_KEY（並執行 npm run build／cap sync）'
+      );
+    }
+    const res = await CapacitorHttp.post({
+      url: `${YATING_API_ORIGIN}${YATING_SPEECH_PATH}`,
+      headers: {
+        'Content-Type': 'application/json',
+        key,
+      },
+      data: body,
+      responseType: 'json',
+    });
+    if (res.status < 200 || res.status >= 300) {
+      const msg =
+        typeof res.data === 'object' && res.data !== null
+          ? JSON.stringify(res.data).slice(0, 240)
+          : String(res.data ?? '');
+      throw new Error(`Yating TTS ${res.status}: ${msg}`);
+    }
+    const data = res.data as {
+      audioContent?: string;
+      statusCode?: number;
+      message?: string | string[];
+    };
+    if (!data.audioContent) {
+      throw new Error('Yating TTS: 回應缺少 audioContent');
+    }
+    return base64ToWavBlob(data.audioContent);
+  }
+
   if (!import.meta.env.DEV && key) {
     headers.key = key;
   }
