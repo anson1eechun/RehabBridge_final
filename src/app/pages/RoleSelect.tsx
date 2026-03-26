@@ -81,7 +81,7 @@ export default function RoleSelect() {
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}
       >
         <div className="flex flex-col items-center justify-center gap-4 mb-2">
-          {/* Logo 容器也加上了玻璃質感 */}
+          {/* Logo 容器 */}
           <div className="w-20 h-20 md:w-24 md:h-24 rounded-[24px] flex items-center justify-center overflow-hidden">
             <img
               src="/home-icon.png"

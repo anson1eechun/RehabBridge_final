@@ -21,9 +21,12 @@ const MainLayout = () => {
   const location = useLocation();
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // 1. 判斷顯示邏輯：只有在身分頁面（長者/家屬/醫生）才顯示訊息球
-  // 首頁 (/) 與 復健執行頁 (/rehab/) 保持完全清爽
-  const showChatButton = location.pathname !== '/' && !location.pathname.includes('/rehab/');
+  // 1. 判斷顯示邏輯：只有在長者/家屬/醫生頁顯示聊天功能
+  // 首頁、復健執行頁、系統開發者端都不顯示
+  const showChatButton =
+    location.pathname === '/patient' ||
+    location.pathname === '/family' ||
+    location.pathname === '/doctor';
   const isEntryPage = location.pathname === '/';
 
   // 2. 換頁自動重置：當使用者切換頁面時，自動關閉訊息抽屜
@@ -43,6 +46,7 @@ const MainLayout = () => {
   }, [location.pathname]);
 
   const { role, id, label } = roleInfo;
+  const patientDrawerComfort = location.pathname.startsWith('/patient');
 
   return (
     <div className="h-[100dvh] w-screen bg-[#F8FAFC] overflow-hidden relative font-sans">
@@ -103,17 +107,33 @@ const MainLayout = () => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 32, stiffness: 300, mass: 0.7 }}
-              className="fixed top-0 right-0 w-full sm:w-[450px] h-full bg-white shadow-[-20px_0_50px_rgba(0,0,0,0.15)] z-[80] flex flex-col"
+              className={`fixed top-0 right-0 h-full bg-white shadow-[-20px_0_50px_rgba(0,0,0,0.15)] z-[80] flex flex-col w-full ${
+                patientDrawerComfort ? 'sm:w-[500px]' : 'sm:w-[450px]'
+              }`}
             >
               {/* 面板頭部 */}
               <div className="p-6 border-b flex items-center justify-between bg-blue-50/50">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-200">
-                    <Bell size={22} />
+                  <div
+                    className={`bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-200 ${
+                      patientDrawerComfort ? 'p-3.5' : 'p-2.5'
+                    }`}
+                  >
+                    <Bell size={patientDrawerComfort ? 28 : 22} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-gray-800 text-lg">醫護即時通訊</h3>
-                    <p className="text-[11px] text-blue-600 font-bold uppercase tracking-wider mt-0.5">
+                    <h3
+                      className={`font-bold text-gray-800 ${
+                        patientDrawerComfort ? 'text-2xl' : 'text-lg'
+                      }`}
+                    >
+                      醫護即時通訊
+                    </h3>
+                    <p
+                      className={`text-blue-600 font-bold uppercase tracking-wider mt-0.5 ${
+                        patientDrawerComfort ? 'text-sm' : 'text-[11px]'
+                      }`}
+                    >
                       {label}模式
                     </p>
                   </div>
@@ -122,7 +142,7 @@ const MainLayout = () => {
                   onClick={() => setIsChatOpen(false)}
                   className="p-3 hover:bg-gray-200 rounded-full text-gray-400 transition-colors"
                 >
-                  <X size={24} />
+                  <X size={patientDrawerComfort ? 28 : 24} />
                 </button>
               </div>
 

@@ -28,6 +28,8 @@ import { mockExercises, mockPrescriptions } from '../data/mockData';
 import { appendSessionRecord } from '../data/sessionStore';
 
 const PATIENT_ID = 'P001';
+/** 患者端：inline style 字級統一放大（約 +22%） */
+const patientPx = (px: number) => Math.round(px * 1.22);
 type VoiceLocale = 'zh-TW' | 'nan-TW';
 
 export default function RehabSession() {
@@ -59,6 +61,7 @@ export default function RehabSession() {
   const angleStatsRef = useRef({ sum: 0, count: 0, max: 0 });
   const sessionSavedRef = useRef(false);
   const voiceFeedbackCountRef = useRef(0);
+  const goalBriefAnnouncedRef = useRef(false);
 
   // Resolve exercise + prescription
   const exercise = mockExercises.find(e => e.id === exerciseId);
@@ -91,6 +94,35 @@ export default function RehabSession() {
     pitch: voiceLocale === 'nan-TW' ? 0.95 : 1.0,
   });
   const { translateToTaigi, taigiModelEnabled } = useTaigiTranslator();
+
+  const goalBriefItems = [
+    `今天做「${exercise?.name ?? '本次動作'}」`,
+    `目標角度 ${targetAngle}°`,
+    `每組 ${totalReps} 次，共 ${totalSets} 組`,
+    `每次保持 ${effectiveHoldSeconds} 秒`,
+  ];
+
+  const buildGoalBriefText = useCallback(() => {
+    return `先聽今天的目標。${goalBriefItems.join('。')}。準備好後按開始偵測。`;
+  }, [goalBriefItems]);
+
+  const speakGoalBrief = useCallback(() => {
+    const zhText = buildGoalBriefText();
+    if (voiceLocale === 'zh-TW') {
+      speak(zhText, true, 'zh-TW');
+      return;
+    }
+
+    const taigiFallback = '先聽今仔日目標。這擺動作、目標角度、組數佮次數攏講予你聽。準備好才開始偵測。';
+    if (!taigiModelEnabled) {
+      speak(taigiFallback, true, 'nan-TW');
+      return;
+    }
+
+    void translateToTaigi(zhText)
+      .then((modelText) => speak(modelText || taigiFallback, true, 'nan-TW'))
+      .catch(() => speak(taigiFallback, true, 'nan-TW'));
+  }, [buildGoalBriefText, speak, taigiModelEnabled, translateToTaigi, voiceLocale]);
 
   const getVoiceTextByLocale = useCallback((locale: VoiceLocale, key: string, n?: number) => {
     if (locale === 'nan-TW') {
@@ -229,6 +261,10 @@ export default function RehabSession() {
 
   useEffect(() => {
     sideLockRef.current = 'primary';
+  }, [exerciseId]);
+
+  useEffect(() => {
+    goalBriefAnnouncedRef.current = false;
   }, [exerciseId]);
 
   const [displayAngle, setDisplayAngle] = useState(0);
@@ -463,6 +499,14 @@ export default function RehabSession() {
     sessionSavedRef.current = true;
   }, [exerciseId, sessionComplete, targetAngle, totalReps, totalSets]);
 
+  useEffect(() => {
+    if (!exercise || sessionStarted || status === 'loading' || goalBriefAnnouncedRef.current) return;
+    goalBriefAnnouncedRef.current = true;
+    setFeedbackMessage('請先看本次目標，準備好再開始偵測');
+    setFeedbackType('info');
+    speakGoalBrief();
+  }, [exercise, sessionStarted, speakGoalBrief, status]);
+
   // Start session
   const handleStart = () => {
     setIsActive(true);
@@ -520,7 +564,7 @@ export default function RehabSession() {
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#EEF2F7' }}>
         <div className="text-center">
           <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
-          <p style={{ fontSize: 18, color: '#546E7A' }}>找不到此訓練項目</p>
+          <p style={{ fontSize: patientPx(18), color: '#546E7A' }}>找不到此訓練項目</p>
           <button onClick={() => navigate('/patient')} className="mt-4 px-6 py-3 rounded-xl bg-blue-600 text-white">
             返回
           </button>
@@ -543,7 +587,7 @@ export default function RehabSession() {
           className="flex items-center gap-2 px-5 py-3 rounded-2xl hover:bg-white/10 transition-colors"
           style={{
             color: 'rgba(255,255,255,0.8)',
-            fontSize: 16,
+            fontSize: patientPx(16),
             minHeight: 48,
             minWidth: 96,
             background: 'rgba(255,255,255,0.05)',
@@ -553,10 +597,26 @@ export default function RehabSession() {
           返回
         </button>
 
-        <div className="text-center">
-          <div style={{ color: 'white', fontWeight: 700, fontSize: 17 }}>{exercise.name}</div>
-          <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>
-            目標 {targetAngle}° · Dr. 陳志明
+        <div className="text-center px-2">
+          <div
+            style={{
+              color: 'white',
+              fontWeight: 800,
+              fontSize: !sessionStarted ? patientPx(22) : patientPx(17),
+              lineHeight: 1.2,
+            }}
+          >
+            {exercise.name}
+          </div>
+          <div
+            style={{
+              color: 'rgba(255,255,255,0.45)',
+              fontSize: !sessionStarted ? patientPx(16) : patientPx(12),
+              fontWeight: !sessionStarted ? 600 : 400,
+              marginTop: 4,
+            }}
+          >
+            目標 {targetAngle}° · 陳志明醫師
           </div>
         </div>
 
@@ -567,7 +627,7 @@ export default function RehabSession() {
             style={{
               color: 'rgba(255,255,255,0.88)',
               border: '1px solid rgba(255,255,255,0.2)',
-              fontSize: 12,
+              fontSize: patientPx(12),
               fontWeight: 700
             }}
             title="切換語音語言"
@@ -580,7 +640,7 @@ export default function RehabSession() {
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 color: 'rgba(255,255,255,0.72)',
-                fontSize: 10,
+                fontSize: patientPx(10),
                 fontWeight: 700,
               }}
             >
@@ -591,9 +651,9 @@ export default function RehabSession() {
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>
               <Wifi size={12} style={{ color: '#66BB6A' }} />
-              <span style={{ fontSize: 11, color: '#66BB6A' }}>{fps}fps</span>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)' }}>· {keypoints.length}pts</span>
-              <span style={{ fontSize: 11, color: hasValidAngle ? '#69F0AE' : '#FFA726' }}>
+              <span style={{ fontSize: patientPx(11), color: '#66BB6A' }}>{fps}fps</span>
+              <span style={{ fontSize: patientPx(11), color: 'rgba(255,255,255,0.65)' }}>· {keypoints.length}pts</span>
+              <span style={{ fontSize: patientPx(11), color: hasValidAngle ? '#69F0AE' : '#FFA726' }}>
                 · angle {hasValidAngle ? 'ok' : '--'}
               </span>
             </div>
@@ -648,26 +708,61 @@ export default function RehabSession() {
               >
                 {status === 'loading' ? (
                   <>
-                    <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-6" />
-                    <p style={{ color: 'white', fontSize: 18, fontWeight: 600 }}>正在載入姿態偵測模型...</p>
-                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 6 }}>首次載入需數秒</p>
+                    <div className="w-24 h-24 border-[5px] border-blue-400 border-t-transparent rounded-full animate-spin mb-8" />
+                    <p style={{ color: 'white', fontSize: patientPx(28), fontWeight: 700 }}>正在載入姿態偵測模型...</p>
+                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: patientPx(22), marginTop: 12, fontWeight: 600 }}>
+                      首次載入需數秒，請稍候
+                    </p>
                   </>
                 ) : (
-                  <div className="text-center px-8">
-                    <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 mx-auto"
-                      style={{ background: 'rgba(66,165,245,0.15)' }}>
-                      <Play size={40} style={{ color: '#64B5F6', marginLeft: 4 }} />
+                  <div className="text-center px-6 sm:px-10 w-full max-w-xl mx-auto">
+                    <div
+                      className="w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center mb-6 sm:mb-8 mx-auto"
+                      style={{ background: 'rgba(102,187,106,0.15)' }}
+                    >
+                      <CheckCircle size={64} style={{ color: '#66BB6A' }} />
                     </div>
-                    <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, marginBottom: 20 }}>
+                    <h2
+                      style={{
+                        color: 'white',
+                        fontSize: 'clamp(2.1rem, 5.5vw, 2.85rem)',
+                        fontWeight: 800,
+                        marginBottom: 24,
+                        lineHeight: 1.25,
+                      }}
+                    >
                       {exercise.name}
                     </h2>
+                    <div
+                      className="rounded-3xl px-6 py-5 sm:px-8 sm:py-6 mb-6 sm:mb-8 text-left border border-white/10"
+                      style={{ background: 'rgba(255,255,255,0.1)' }}
+                    >
+                      {goalBriefItems.map((item, i) => (
+                        <p
+                          key={item}
+                          style={{
+                            color: 'rgba(255,255,255,0.95)',
+                            fontSize: 'clamp(1.45rem, 4.2vw, 1.88rem)',
+                            lineHeight: 1.65,
+                            fontWeight: 600,
+                            marginBottom: i === goalBriefItems.length - 1 ? 0 : 14,
+                          }}
+                        >
+                          • {item}
+                        </p>
+                      ))}
+                    </div>
                     <button
                       onClick={handleStart}
-                      className="w-full py-5 rounded-2xl text-white flex items-center justify-center gap-3"
-                      style={{ background: 'linear-gradient(135deg, #42A5F5, #1976D2)', fontSize: 18, fontWeight: 700 }}
+                      className="w-full py-6 sm:py-7 rounded-2xl text-white flex items-center justify-center gap-3 shadow-lg"
+                      style={{
+                        background: 'linear-gradient(135deg, #42A5F5, #1976D2)',
+                        fontSize: 'clamp(1.45rem, 4vw, 1.9rem)',
+                        fontWeight: 800,
+                      }}
                     >
-                      <Play size={22} />
-                      開始訓練
+                      <Play size={36} className="shrink-0" />
+                      我知道了，開始偵測
                     </button>
                   </div>
                 )}
@@ -679,11 +774,11 @@ export default function RehabSession() {
           {(status === 'no-camera' || status === 'error') && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
               <WifiOff size={48} style={{ color: '#EF5350', marginBottom: 16 }} />
-              <p style={{ color: 'white', fontSize: 18, fontWeight: 600 }}>{errorMessage}</p>
+              <p style={{ color: 'white', fontSize: patientPx(18), fontWeight: 600 }}>{errorMessage}</p>
               <button
                 onClick={() => { setIsActive(false); setTimeout(() => setIsActive(true), 100); }}
                 className="mt-6 px-6 py-3 rounded-xl flex items-center gap-2 text-white"
-                style={{ background: '#1565C0', fontSize: 15 }}
+                style={{ background: '#1565C0', fontSize: patientPx(15) }}
               >
                 <RotateCcw size={16} /> 重試
               </button>
@@ -700,8 +795,8 @@ export default function RehabSession() {
                 className="px-5 py-3 rounded-2xl"
                 style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}
               >
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>即時角度</div>
-                <div style={{ color: angleColor, fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: patientPx(12) }}>即時角度</div>
+                <div style={{ color: angleColor, fontSize: patientPx(36), fontWeight: 800, lineHeight: 1.1 }}>
                   {hasValidAngle ? `${uiAngle}°` : '--'}
                 </div>
               </motion.div>
@@ -714,8 +809,8 @@ export default function RehabSession() {
                   className="px-5 py-3 rounded-2xl text-center"
                   style={{ background: 'rgba(102,187,106,0.85)', backdropFilter: 'blur(8px)' }}
                 >
-                  <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12 }}>保持</div>
-                  <div style={{ color: 'white', fontSize: 36, fontWeight: 800, lineHeight: 1.1 }}>
+                  <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: patientPx(12) }}>保持</div>
+                  <div style={{ color: 'white', fontSize: patientPx(36), fontWeight: 800, lineHeight: 1.1 }}>
                     {holdCountdown}
                   </div>
                 </motion.div>
@@ -724,10 +819,10 @@ export default function RehabSession() {
               {/* Deviation indicator */}
               <div className="px-4 py-3 rounded-2xl text-right"
                 style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)' }}>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>目標差距</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: patientPx(12) }}>目標差距</div>
                 <div style={{
                   color: uiAngleResult.status === 'achieved' ? '#66BB6A' : '#FFA726',
-                  fontSize: 22, fontWeight: 700, lineHeight: 1.2
+                  fontSize: patientPx(22), fontWeight: 700, lineHeight: 1.2
                 }}>
                   {!hasValidAngle
                     ? '追蹤中...'
@@ -754,21 +849,21 @@ export default function RehabSession() {
               >
                 <CheckCircle size={80} style={{ color: '#66BB6A', margin: '0 auto 16px' }} />
               </motion.div>
-              <h2 style={{ color: 'white', fontSize: 28, fontWeight: 800, marginBottom: 8 }}>
+              <h2 style={{ color: 'white', fontSize: patientPx(28), fontWeight: 800, marginBottom: 8 }}>
                 訓練完成！
               </h2>
-              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 16, marginBottom: 32 }}>
+              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: patientPx(16), marginBottom: 32 }}>
                 {totalSets} 組 × {totalReps} 次 · 最高角度 {currentAngle}°
               </p>
               <div className="flex gap-3">
                 <button onClick={handleRestart}
                   className="px-6 py-3 rounded-2xl flex items-center gap-2"
-                  style={{ background: 'rgba(255,255,255,0.12)', color: 'white', fontSize: 16 }}>
+                  style={{ background: 'rgba(255,255,255,0.12)', color: 'white', fontSize: patientPx(16) }}>
                   <RotateCcw size={18} /> 再做一次
                 </button>
                 <button onClick={() => navigate('/patient')}
                   className="px-6 py-3 rounded-2xl flex items-center gap-2 text-white"
-                  style={{ background: 'linear-gradient(135deg, #1565C0, #0D47A1)', fontSize: 16, fontWeight: 700 }}>
+                  style={{ background: 'linear-gradient(135deg, #1565C0, #0D47A1)', fontSize: patientPx(16), fontWeight: 700 }}>
                   <CheckCircle size={18} /> 完成返回
                 </button>
               </div>
@@ -777,8 +872,15 @@ export default function RehabSession() {
         </div>
 
         {/* Right Sidebar — Stats & Controls */}
-        <div className="flex flex-col gap-0 overflow-y-auto"
-          style={{ width: 280, background: '#1A2840', borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+        <div
+          className="flex flex-col gap-0 overflow-y-auto"
+          style={{
+            width: !sessionStarted ? 348 : 292,
+            minWidth: !sessionStarted ? 320 : undefined,
+            background: '#1A2840',
+            borderLeft: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
 
           {/* Angle Gauge */}
           <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
@@ -786,7 +888,7 @@ export default function RehabSession() {
               currentAngle={sessionStarted ? uiAngle : 0}
               targetAngle={targetAngle}
               tolerance={effectiveTolerance}
-              size={220}
+              size={260}
             />
           </div>
 
@@ -795,15 +897,15 @@ export default function RehabSession() {
             <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(21,101,192,0.2)' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 2 }}>組次</div>
-                  <div style={{ color: 'white', fontSize: 24, fontWeight: 700 }}>
-                    {Math.min(currentSet, totalSets)}<span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>/{totalSets}</span>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: patientPx(12), marginBottom: 2 }}>組次</div>
+                  <div style={{ color: 'white', fontSize: patientPx(24), fontWeight: 700 }}>
+                    {Math.min(currentSet, totalSets)}<span style={{ color: 'rgba(255,255,255,0.4)', fontSize: patientPx(14) }}>/{totalSets}</span>
                   </div>
                 </div>
                 <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(102,187,106,0.15)' }}>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 2 }}>次數</div>
-                  <div style={{ color: '#69F0AE', fontSize: 24, fontWeight: 700 }}>
-                    {currentRep}<span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>/{totalReps}</span>
+                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: patientPx(12), marginBottom: 2 }}>次數</div>
+                  <div style={{ color: '#69F0AE', fontSize: patientPx(24), fontWeight: 700 }}>
+                    {currentRep}<span style={{ color: 'rgba(255,255,255,0.4)', fontSize: patientPx(14) }}>/{totalReps}</span>
                   </div>
                 </div>
               </div>
@@ -826,7 +928,16 @@ export default function RehabSession() {
 
           {/* Feedback Message */}
           <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6 }}>語音提示</div>
+            <div
+              style={{
+                color: 'rgba(255,255,255,0.45)',
+                fontSize: !sessionStarted ? patientPx(15) : patientPx(11),
+                fontWeight: !sessionStarted ? 700 : 400,
+                marginBottom: 8,
+              }}
+            >
+              語音提示
+            </div>
             <AnimatePresence mode="wait">
               <motion.div
                 key={feedbackMessage}
@@ -839,14 +950,17 @@ export default function RehabSession() {
                     feedbackType === 'success' ? 'rgba(102,187,106,0.15)' :
                     feedbackType === 'warning' ? 'rgba(255,167,38,0.15)' :
                     'rgba(255,255,255,0.06)',
+                  padding: !sessionStarted ? '16px 14px' : undefined,
                 }}
               >
                 <p style={{
                   color:
                     feedbackType === 'success' ? '#69F0AE' :
                     feedbackType === 'warning' ? '#FFA726' :
-                    'rgba(255,255,255,0.75)',
-                  fontSize: 14, lineHeight: 1.5,
+                    'rgba(255,255,255,0.82)',
+                  fontSize: !sessionStarted ? patientPx(20) : patientPx(14),
+                  lineHeight: !sessionStarted ? 1.55 : 1.5,
+                  fontWeight: !sessionStarted ? 600 : 400,
                 }}>
                   {feedbackMessage || '等待開始訓練...'}
                 </p>
@@ -856,44 +970,86 @@ export default function RehabSession() {
 
           {/* Exercise Info */}
           <div className="p-4 border-b flex-1" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-            <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 8 }}>訓練資訊</div>
+            <div
+              style={{
+                color: 'rgba(255,255,255,0.45)',
+                fontSize: !sessionStarted ? patientPx(15) : patientPx(11),
+                fontWeight: !sessionStarted ? 700 : 400,
+                marginBottom: 10,
+              }}
+            >
+              訓練資訊
+            </div>
             {[
               { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
               { label: '容許誤差', value: `±${effectiveTolerance}°`, color: 'rgba(255,255,255,0.6)' },
               { label: '保持時間', value: `${effectiveHoldSeconds} 秒`, color: 'rgba(255,255,255,0.6)' },
               { label: '頻率', value: prescription?.frequency ?? '每天兩次', color: 'rgba(255,255,255,0.6)' },
             ].map(item => (
-              <div key={item.label} className="flex justify-between items-center mb-2.5">
-                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13 }}>{item.label}</span>
-                <span style={{ color: item.color, fontSize: 13, fontWeight: 600 }}>{item.value}</span>
+              <div key={item.label} className="flex justify-between items-center gap-2 mb-2.5">
+                <span
+                  style={{
+                    color: 'rgba(255,255,255,0.5)',
+                    fontSize: !sessionStarted ? patientPx(18) : patientPx(13),
+                    fontWeight: !sessionStarted ? 600 : 400,
+                  }}
+                >
+                  {item.label}
+                </span>
+                <span
+                  style={{
+                    color: item.color,
+                    fontSize: !sessionStarted ? patientPx(18) : patientPx(13),
+                    fontWeight: 700,
+                    textAlign: 'right',
+                  }}
+                >
+                  {item.value}
+                </span>
               </div>
             ))}
 
             {prescription?.notes && (
-              <div className="mt-3 p-3 rounded-xl" style={{ background: 'rgba(255,214,0,0.08)' }}>
-                <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 4 }}>醫師備注</div>
-                <p style={{ color: '#FFD600', fontSize: 12, lineHeight: 1.5 }}>{prescription.notes}</p>
+              <div
+                className="mt-3 rounded-xl"
+                style={{
+                  background: 'rgba(255,214,0,0.08)',
+                  padding: !sessionStarted ? '14px 12px' : '12px',
+                }}
+              >
+                <div
+                  style={{
+                    color: 'rgba(255,255,255,0.45)',
+                    fontSize: !sessionStarted ? patientPx(14) : patientPx(11),
+                    fontWeight: 700,
+                    marginBottom: 6,
+                  }}
+                >
+                  醫師備注
+                </div>
+                <p
+                  style={{
+                    color: '#FFD600',
+                    fontSize: !sessionStarted ? patientPx(17) : patientPx(12),
+                    lineHeight: 1.55,
+                    fontWeight: !sessionStarted ? 600 : 400,
+                  }}
+                >
+                  {prescription.notes}
+                </p>
               </div>
             )}
           </div>
 
-          {/* Control Buttons */}
-          <div className="p-4">
-            {!sessionStarted ? (
-              <button
-                onClick={handleStart}
-                className="w-full py-4 rounded-2xl text-white flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #42A5F5, #1976D2)', fontSize: 16, fontWeight: 700 }}
-              >
-                <Play size={20} /> 開始訓練
-              </button>
-            ) : (
+          {/* 訓練中才顯示控制鈕；開始請用畫面中央「我知道了，開始偵測」 */}
+          {sessionStarted && (
+            <div className="p-4">
               <div className="flex gap-2">
                 {isActive ? (
                   <button
                     onClick={handlePause}
                     className="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2"
-                    style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)', fontSize: 15, fontWeight: 600 }}
+                    style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)', fontSize: patientPx(15), fontWeight: 600 }}
                   >
                     <Pause size={18} /> 暫停
                   </button>
@@ -901,7 +1057,7 @@ export default function RehabSession() {
                   <button
                     onClick={handleResume}
                     className="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 text-white"
-                    style={{ background: 'linear-gradient(135deg, #42A5F5, #1976D2)', fontSize: 15, fontWeight: 600 }}
+                    style={{ background: 'linear-gradient(135deg, #42A5F5, #1976D2)', fontSize: patientPx(15), fontWeight: 600 }}
                   >
                     <Play size={18} /> 繼續
                   </button>
@@ -909,13 +1065,13 @@ export default function RehabSession() {
                 <button
                   onClick={() => navigate('/patient')}
                   className="px-4 py-4 rounded-2xl"
-                  style={{ background: 'rgba(239,83,80,0.15)', color: '#EF5350', fontSize: 15, fontWeight: 600 }}
+                  style={{ background: 'rgba(239,83,80,0.15)', color: '#EF5350', fontSize: patientPx(15), fontWeight: 600 }}
                 >
                   結束
                 </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

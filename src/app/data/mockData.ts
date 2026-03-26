@@ -129,6 +129,11 @@ export const mockFamilyMembers: FamilyMember[] = [
   { id: 'F002', patientId: 'P002', name: '李建國', relation: '兒子', phone: '0922-333-444', avatar: '國' }
 ];
 
+/** 示範用統一訓練量：各動作相同組數／次數／保持秒，便於介面與處方對齊 */
+const DEFAULT_REPS = 10;
+const DEFAULT_SETS = 3;
+const DEFAULT_HOLD_SEC = 3;
+
 // ─── 7 大偵測動作 ──────────────────────────────────────────
 export const mockExercises: Exercise[] = [
   {
@@ -138,7 +143,7 @@ export const mockExercises: Exercise[] = [
     category: '下肢',
     description: '測量髖-膝-踝角度，增強膝關節活動度',
     targetAngle: 110, restAngle: 170, tolerance: 10, joints: [23, 25, 27],
-    reps: 10, sets: 3, holdSeconds: 3, side: 'left',
+    reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left',
     guidanceSteps: ['坐姿挺直', '腳跟滑向椅子', '保持三秒'],
     voicePrompts: { start: '請開始彎曲膝蓋', tooLow: '再往後縮一點', achieved: '很好，請保持', complete: '膝蓋訓練完成' },
     bodyArea: '膝蓋', difficulty: 'easy'
@@ -150,33 +155,43 @@ export const mockExercises: Exercise[] = [
     category: '上肢',
     description: '測量髖-肩-肘角度，測試手臂平舉能力',
     targetAngle: 90, restAngle: 20, tolerance: 10, joints: [23, 11, 13],
-    reps: 12, sets: 3, holdSeconds: 2, side: 'left',
+    reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left',
     guidanceSteps: ['手臂由側邊抬起', '與肩同高', '緩慢放下'],
     voicePrompts: { start: '請向側邊抬起手臂', tooLow: '再抬高一點', achieved: '達到目標高度', complete: '肩膀訓練完成' },
     bodyArea: '肩膀', difficulty: 'medium'
   },
-  { id: 'elbow_flexion', name: '手肘彎曲訓練', nameEn: 'Elbow Flexion', category: '上肢', description: '強化二頭肌肌力', targetAngle: 130, restAngle: 30, tolerance: 8, joints: [11, 13, 15], reps: 15, sets: 3, holdSeconds: 2, side: 'left', guidanceSteps: ['上臂固定', '前臂向上彎曲'], voicePrompts: { start: '請開始彎曲手肘', tooLow: '再用力彎一點', achieved: '非常棒', complete: '手肘訓練完成' }, bodyArea: '手肘', difficulty: 'easy' },
-  { id: 'hip_abduction', name: '髖關節外展訓練', nameEn: 'Hip Abduction', category: '下肢', description: '強化步態穩定性', targetAngle: 35, restAngle: 5, tolerance: 5, joints: [24, 23, 25], reps: 10, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['腿部側向抬起', '骨盆保持水平'], voicePrompts: { start: '請向外側抬腿', tooLow: '請再抬高些', achieved: '維持平衡，很好', complete: '髖部訓練完成' }, bodyArea: '髖部', difficulty: 'medium' },
-  { id: 'leg_raise', name: '直腿抬舉訓練', nameEn: 'Leg Raise', category: '下肢', description: '訓練核心與股四頭肌', targetAngle: 45, restAngle: 5, tolerance: 5, joints: [11, 23, 25], reps: 10, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['平躺於墊子上', '膝蓋伸直抬起'], voicePrompts: { start: '請將整條腿抬起', tooLow: '腳不要彎', achieved: '高度正確', complete: '抬腿紀錄已儲存' }, bodyArea: '大腿', difficulty: 'medium' },
-  { id: 'squat', name: '靠牆深蹲訓練', nameEn: 'Wall Squat', category: '核心', description: '下蹲測量膝蓋彎曲，強化肌力', targetAngle: 100, restAngle: 170, tolerance: 10, joints: [23, 25, 27], reps: 8, sets: 2, holdSeconds: 5, side: 'bilateral', guidanceSteps: ['背部貼牆', '緩慢下蹲'], voicePrompts: { start: '請沿著牆壁蹲下', tooLow: '再深一點點', achieved: '保持住', complete: '深蹲組數完成' }, bodyArea: '全身', difficulty: 'hard' },
-  { id: 'side_leg_raise', name: '側面抬腿訓練', nameEn: 'Side Leg Raise', category: '下肢', description: '側臥強化中臀肌', targetAngle: 30, restAngle: 5, tolerance: 5, joints: [23, 24, 26], reps: 12, sets: 3, holdSeconds: 3, side: 'left', guidanceSteps: ['身體側向一邊', '上方腿部抬起'], voicePrompts: { start: '請開始側面抬腿', tooLow: '再高一公分', achieved: '很好', complete: '側面訓練結束' }, bodyArea: '髖部', difficulty: 'medium' }
+  { id: 'elbow_flexion', name: '手肘彎曲訓練', nameEn: 'Elbow Flexion', category: '上肢', description: '強化二頭肌肌力', targetAngle: 130, restAngle: 30, tolerance: 8, joints: [11, 13, 15], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['上臂固定', '前臂向上彎曲'], voicePrompts: { start: '請開始彎曲手肘', tooLow: '再用力彎一點', achieved: '非常棒', complete: '手肘訓練完成' }, bodyArea: '手肘', difficulty: 'easy' },
+  { id: 'hip_abduction', name: '髖關節外展訓練', nameEn: 'Hip Abduction', category: '下肢', description: '強化步態穩定性', targetAngle: 35, restAngle: 5, tolerance: 5, joints: [24, 23, 25], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['腿部側向抬起', '骨盆保持水平'], voicePrompts: { start: '請向外側抬腿', tooLow: '請再抬高些', achieved: '維持平衡，很好', complete: '髖部訓練完成' }, bodyArea: '髖部', difficulty: 'medium' },
+  { id: 'leg_raise', name: '直腿抬舉訓練', nameEn: 'Leg Raise', category: '下肢', description: '訓練核心與股四頭肌', targetAngle: 45, restAngle: 5, tolerance: 5, joints: [11, 23, 25], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['平躺於墊子上', '膝蓋伸直抬起'], voicePrompts: { start: '請將整條腿抬起', tooLow: '腳不要彎', achieved: '高度正確', complete: '抬腿紀錄已儲存' }, bodyArea: '大腿', difficulty: 'medium' },
+  { id: 'squat', name: '靠牆深蹲訓練', nameEn: 'Wall Squat', category: '核心', description: '下蹲測量膝蓋彎曲，強化肌力', targetAngle: 100, restAngle: 170, tolerance: 10, joints: [23, 25, 27], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'bilateral', guidanceSteps: ['背部貼牆', '緩慢下蹲'], voicePrompts: { start: '請沿著牆壁蹲下', tooLow: '再深一點點', achieved: '保持住', complete: '深蹲組數完成' }, bodyArea: '全身', difficulty: 'hard' },
+  { id: 'side_leg_raise', name: '側面抬腿訓練', nameEn: 'Side Leg Raise', category: '下肢', description: '側臥強化中臀肌', targetAngle: 30, restAngle: 5, tolerance: 5, joints: [23, 24, 26], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['身體側向一邊', '上方腿部抬起'], voicePrompts: { start: '請開始側面抬腿', tooLow: '再高一公分', achieved: '很好', complete: '側面訓練結束' }, bodyArea: '髖部', difficulty: 'medium' }
 ];
 
-// ─── 詳細處方設定 (10 組處方) ────────────────────────────────
+/** 處方示範：各項目統一 10 次 × 3 組、保持 3 秒、每天兩次（僅目標角度／備註依個案調整） */
+const RX_REPS = DEFAULT_REPS;
+const RX_SETS = DEFAULT_SETS;
+const RX_HOLD = DEFAULT_HOLD_SEC;
+const RX_FREQ = '每天兩次';
+
+// ─── 詳細處方設定 ────────────────────────────────────────────
 export const mockPrescriptions: Prescription[] = [
-  { id: 'RX001', patientId: 'P001', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 110, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天兩次', notes: '術後第六週，穩定性增加中', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
-  { id: 'RX002', patientId: 'P001', doctorId: 'D001', exerciseId: 'leg_raise', targetAngle: 45, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天一次', notes: '防止肌肉萎縮', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
-  { id: 'RX003', patientId: 'P001', doctorId: 'D001', exerciseId: 'squat', targetAngle: 90, reps: 5, sets: 2, holdSeconds: 5, frequency: '每兩天一次', notes: '靠牆進行', startDate: '2026-03-10', endDate: '2026-04-10', active: true },
-  { id: 'RX004', patientId: 'P002', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 90, reps: 12, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '避免聳肩', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
-  { id: 'RX005', patientId: 'P002', doctorId: 'D001', exerciseId: 'elbow_flexion', targetAngle: 130, reps: 15, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '搭配 0.5kg 啞鈴', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
-  { id: 'RX006', patientId: 'P003', doctorId: 'D002', exerciseId: 'elbow_flexion', targetAngle: 110, reps: 10, sets: 2, holdSeconds: 2, frequency: '每天一次', notes: '誘發上肢動作', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
-  { id: 'RX007', patientId: 'P003', doctorId: 'D002', exerciseId: 'leg_raise', targetAngle: 30, reps: 8, sets: 2, holdSeconds: 3, frequency: '每天一次', notes: '控制力訓練', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
-  { id: 'RX008', patientId: 'P003', doctorId: 'D002', exerciseId: 'hip_abduction', targetAngle: 20, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '改善平衡', startDate: '2026-02-01', endDate: '2026-06-10', active: true },
-  { id: 'RX009', patientId: 'P004', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 30, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天一次', notes: '全髖置換後訓練', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
-  { id: 'RX010', patientId: 'P004', doctorId: 'D001', exerciseId: 'side_leg_raise', targetAngle: 25, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '強化中臀肌', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
-  { id: 'RX011', patientId: 'P005', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 95, reps: 12, sets: 3, holdSeconds: 2, frequency: '每天兩次', notes: '避免代償聳肩', startDate: '2026-02-20', endDate: '2026-05-20', active: true },
-  { id: 'RX012', patientId: 'P006', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 105, reps: 10, sets: 3, holdSeconds: 3, frequency: '每天一次', notes: '術後需注意疼痛回報', startDate: '2026-03-01', endDate: '2026-06-01', active: true },
-  { id: 'RX013', patientId: 'P007', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 28, reps: 10, sets: 2, holdSeconds: 3, frequency: '每天兩次', notes: '先穩定平衡再提高角度', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX001', patientId: 'P001', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 110, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '術後第六週，穩定性增加中', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX002', patientId: 'P001', doctorId: 'D001', exerciseId: 'leg_raise', targetAngle: 45, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '防止肌肉萎縮', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX003', patientId: 'P001', doctorId: 'D001', exerciseId: 'squat', targetAngle: 90, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '靠牆進行', startDate: '2026-03-10', endDate: '2026-04-10', active: true },
+  { id: 'RX014', patientId: 'P001', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 35, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '骨盆保持水平', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX015', patientId: 'P001', doctorId: 'D001', exerciseId: 'side_leg_raise', targetAngle: 30, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '強化中臀肌', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX016', patientId: 'P001', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 90, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '與處方下肢項目相同頻率與組數', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX017', patientId: 'P001', doctorId: 'D001', exerciseId: 'elbow_flexion', targetAngle: 130, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '可視情況搭配 0.5kg 啞鈴', startDate: '2026-02-15', endDate: '2026-04-15', active: true },
+  { id: 'RX004', patientId: 'P002', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 90, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '避免聳肩', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
+  { id: 'RX005', patientId: 'P002', doctorId: 'D001', exerciseId: 'elbow_flexion', targetAngle: 130, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '搭配 0.5kg 啞鈴', startDate: '2026-02-20', endDate: '2026-05-01', active: true },
+  { id: 'RX006', patientId: 'P003', doctorId: 'D002', exerciseId: 'elbow_flexion', targetAngle: 110, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '誘發上肢動作', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
+  { id: 'RX007', patientId: 'P003', doctorId: 'D002', exerciseId: 'leg_raise', targetAngle: 30, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '控制力訓練', startDate: '2026-01-10', endDate: '2026-06-10', active: true },
+  { id: 'RX008', patientId: 'P003', doctorId: 'D002', exerciseId: 'hip_abduction', targetAngle: 20, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '改善平衡', startDate: '2026-02-01', endDate: '2026-06-10', active: true },
+  { id: 'RX009', patientId: 'P004', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 30, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '全髖置換後訓練', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX010', patientId: 'P004', doctorId: 'D001', exerciseId: 'side_leg_raise', targetAngle: 25, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '強化中臀肌', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX011', patientId: 'P005', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 95, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '避免代償聳肩', startDate: '2026-02-20', endDate: '2026-05-20', active: true },
+  { id: 'RX012', patientId: 'P006', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 105, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '術後需注意疼痛回報', startDate: '2026-03-01', endDate: '2026-06-01', active: true },
+  { id: 'RX013', patientId: 'P007', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 28, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '先穩定平衡再提高角度', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
 ];
 
 // ─── 多維度專業統計數據 (Advanced Analytics) ───────────────────
@@ -215,6 +230,15 @@ export const mockAlertStats = {
 // ─── 歷史記錄、通知與進度數據 ──────────────────────────────────
 export const mockSessionRecords: SessionRecord[] = [
   { id: 'S001', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-24', duration: 25, completedSets: 3, completedReps: 10, avgAngle: 108, maxAngle: 115, targetAngle: 110, score: 92, voiceFeedbackCount: 8 },
+  { id: 'S007', patientId: 'P001', exerciseId: 'leg_raise', date: '2026-03-23', duration: 18, completedSets: 3, completedReps: 10, avgAngle: 41, maxAngle: 47, targetAngle: 45, score: 86, voiceFeedbackCount: 7 },
+  { id: 'S008', patientId: 'P001', exerciseId: 'squat', date: '2026-03-22', duration: 16, completedSets: 3, completedReps: 10, avgAngle: 93, maxAngle: 101, targetAngle: 90, score: 84, voiceFeedbackCount: 9 },
+  { id: 'S009', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-21', duration: 24, completedSets: 3, completedReps: 10, avgAngle: 104, maxAngle: 112, targetAngle: 110, score: 88, voiceFeedbackCount: 8 },
+  { id: 'S010', patientId: 'P001', exerciseId: 'hip_abduction', date: '2026-03-20', duration: 17, completedSets: 3, completedReps: 10, avgAngle: 31, maxAngle: 37, targetAngle: 35, score: 82, voiceFeedbackCount: 10 },
+  { id: 'S011', patientId: 'P001', exerciseId: 'side_leg_raise', date: '2026-03-19', duration: 15, completedSets: 3, completedReps: 10, avgAngle: 26, maxAngle: 31, targetAngle: 30, score: 80, voiceFeedbackCount: 9 },
+  { id: 'S012', patientId: 'P001', exerciseId: 'leg_raise', date: '2026-03-18', duration: 19, completedSets: 3, completedReps: 10, avgAngle: 40, maxAngle: 46, targetAngle: 45, score: 85, voiceFeedbackCount: 8 },
+  { id: 'S013', patientId: 'P001', exerciseId: 'knee_flexion', date: '2026-03-17', duration: 23, completedSets: 3, completedReps: 10, avgAngle: 101, maxAngle: 109, targetAngle: 110, score: 83, voiceFeedbackCount: 11 },
+  { id: 'S014', patientId: 'P001', exerciseId: 'squat', date: '2026-03-16', duration: 14, completedSets: 3, completedReps: 10, avgAngle: 90, maxAngle: 98, targetAngle: 90, score: 79, voiceFeedbackCount: 12 },
+  { id: 'S015', patientId: 'P001', exerciseId: 'hip_abduction', date: '2026-03-15', duration: 16, completedSets: 3, completedReps: 10, avgAngle: 29, maxAngle: 34, targetAngle: 35, score: 78, voiceFeedbackCount: 10 },
   { id: 'S002', patientId: 'P002', exerciseId: 'shoulder_abduction', date: '2026-03-22', duration: 18, completedSets: 3, completedReps: 12, avgAngle: 84, maxAngle: 91, targetAngle: 90, score: 83, voiceFeedbackCount: 10 },
   { id: 'S003', patientId: 'P004', exerciseId: 'hip_abduction', date: '2026-03-20', duration: 20, completedSets: 2, completedReps: 8, avgAngle: 62, maxAngle: 72, targetAngle: 90, score: 61, voiceFeedbackCount: 14 },
   { id: 'S004', patientId: 'P005', exerciseId: 'shoulder_abduction', date: '2026-03-24', duration: 22, completedSets: 3, completedReps: 12, avgAngle: 92, maxAngle: 100, targetAngle: 95, score: 87, voiceFeedbackCount: 9 },
@@ -226,6 +250,15 @@ export const mockNotifications = [
   { id: 'N001', type: 'success', title: '今日訓練完成', message: '王大明 已完成膝蓋彎曲訓練', time: '14:32', read: false },
   { id: 'N002', type: 'warning', title: '訓練進度落後', message: '陳阿蘭 本週目標完成率僅 45%', time: '10:15', read: false },
   { id: 'N003', type: 'info', title: '新處方建立', message: '林醫師 已為 張福壽 新增手肘訓練', time: '09:00', read: true },
+  { id: 'N004', type: 'success', title: '昨日表現良好', message: '王大明 昨日訓練平均得分 86 分，高於上週平均。', time: '08:40', read: false },
+  { id: 'N005', type: 'info', title: '示範影片更新', message: '陳醫師上傳「直腿抬舉」新版示範，建議陪長輩一起看一次。', time: '昨天 17:20', read: false },
+  { id: 'N006', type: 'warning', title: '今日第二次未完成', message: '王大明 尚缺 1 次今日預定訓練，可協助提醒暖身與時間。', time: '昨天 21:05', read: true },
+  { id: 'N007', type: 'info', title: '家屬留言已讀', message: '您傳給陳醫師的訊息已讀，醫師建議維持每天兩次頻率。', time: '昨天 15:30', read: true },
+  { id: 'N008', type: 'success', title: '角度進步', message: '王大明 髖關節外展本週達標率 92%，較上週提升 8%。', time: '3/24', read: true },
+  { id: 'N009', type: 'info', title: '回診倒數', message: '王大明 與陳醫師視訊回診將於 3/26（三）10:30 舉行。', time: '3/23', read: false },
+  { id: 'N010', type: 'success', title: '連續訓練紀錄', message: '王大明 已連續 7 天完成至少 1 次訓練，可給予鼓勵！', time: '3/22', read: true },
+  { id: 'N011', type: 'info', title: '治療師提醒', message: '黃治療師：若抬腿時臀部痠痛明顯，可將保持時間暫降為 2 秒。', time: '3/21', read: true },
+  { id: 'N012', type: 'warning', title: '裝置電量偏低', message: '王大明 上次同步時平板電量 18%，建議充電後再開始長時間訓練。', time: '3/20', read: true },
 ];
 
 export const mockAngleProgress = [

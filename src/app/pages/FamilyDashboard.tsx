@@ -13,7 +13,7 @@ import {
   ResponsiveContainer, CartesianGrid, ReferenceLine, LineChart, Line
 } from 'recharts';
 import {
-  mockPatients, mockNotifications, mockAngleProgress
+  mockPatients, mockNotifications, mockAngleProgress, mockExercises
 } from '../data/mockData';
 import { useSessionRecords, buildWeeklyActivityFromSessions } from '../data/sessionStore';
 
@@ -22,14 +22,14 @@ const FAMILY_NAME = '王小美';
 
 export default function FamilyDashboard() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'alerts'>('overview');
+  const [activeTab, setActiveTab] = useState<'概覽' | '紀錄' | '通知'>('概覽');
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const sessionRecords = useSessionRecords();
 
   const unreadAlerts = mockNotifications.filter(n => !n.read).length;
   const patientSessions = sessionRecords.filter(s => s.patientId === PATIENT.id);
   const weeklyActivity = buildWeeklyActivityFromSessions(patientSessions);
-  const recentSessions = patientSessions.slice(0, 5);
+  const recentSessions = patientSessions.slice(0, 10);
 
   const lastSession = recentSessions[0];
   const avgScore = Math.round(recentSessions.reduce((sum, s) => sum + s.score, 0) / (recentSessions.length || 1));
@@ -97,12 +97,17 @@ export default function FamilyDashboard() {
             </div>
           </motion.div>
           
-          <button onClick={() => setIsNotifyOpen(true)} className="relative p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all">
+          <button
+            onClick={() => setIsNotifyOpen(true)}
+            className="relative p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all"
+            aria-label={unreadAlerts > 0 ? '通知，有未讀訊息' : '通知'}
+          >
             <Bell size={24} className="text-white" />
             {unreadAlerts > 0 && (
-              <span className="absolute top-2 right-2 w-5 h-5 bg-red-500 rounded-full border-2 border-teal-700 text-[10px] flex items-center justify-center font-bold text-white">
-                {unreadAlerts}
-              </span>
+              <span
+                className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-teal-800 shadow-[0_0_10px_rgba(239,68,68,0.95)]"
+                aria-hidden
+              />
             )}
           </button>
         </div>
@@ -139,13 +144,27 @@ export default function FamilyDashboard() {
 
             {/* 頁籤切換 */}
             <div className="flex gap-1 p-1 bg-gray-100 rounded-2xl">
-              {['overview', 'history', 'alerts'].map((tab) => (
+              {(['概覽', '紀錄', '通知'] as const).map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab as any)}
+                  onClick={() => setActiveTab(tab)}
                   className={`flex-1 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === tab ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-400'}`}
                 >
-                  {tab === 'overview' ? '進度概覽' : tab === 'history' ? '訓練記錄' : `通知 (${unreadAlerts})`}
+                  {tab === '概覽' ? (
+                    '進度概覽'
+                  ) : tab === '紀錄' ? (
+                    '訓練記錄'
+                  ) : (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      通知
+                      {unreadAlerts > 0 && (
+                        <span
+                          className="shrink-0 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)]"
+                          aria-hidden
+                        />
+                      )}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -154,7 +173,7 @@ export default function FamilyDashboard() {
             <AnimatePresence mode="wait">
               <motion.div key={activeTab} initial={{ opacity: 0, x: 5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -5 }} className="min-h-[400px]">
                 
-                {activeTab === 'overview' && (
+                {activeTab === '概覽' && (
                   <div className="space-y-6">
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
                       <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2">
@@ -230,24 +249,49 @@ export default function FamilyDashboard() {
                   </div>
                 )}
 
-                {activeTab === 'history' && (
+                {activeTab === '紀錄' && (
                   <div className="space-y-3">
-                    {recentSessions.map((session, i) => (
-                      <div key={session.id} className="bg-white p-5 rounded-2xl border border-gray-100 flex items-center gap-4 shadow-sm">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-bold text-lg ${session.score >= 85 ? 'bg-teal-50 text-teal-600' : 'bg-orange-50 text-orange-600'}`}>
-                          {session.score}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-bold text-gray-800">{session.date}</p>
-                          <p className="text-xs text-gray-400 mt-1">最高 {session.maxAngle}° · 完成 {session.completedReps}次 · {session.duration}分鐘</p>
-                        </div>
-                        <ChevronRight className="text-gray-300" />
+                    <div className="flex items-center justify-between px-1">
+                      <h4 className="text-xl font-bold text-gray-700">近期復健</h4>
+                      <span className="text-lg font-bold text-teal-700 bg-teal-50 px-3 py-1 rounded-full">
+                        共 {recentSessions.length} 筆
+                      </span>
+                    </div>
+                    {recentSessions.length > 0 ? (
+                      <div className="max-h-[440px] overflow-y-auto pr-1 space-y-3">
+                        {recentSessions.map((session) => {
+                          const exerciseName =
+                            mockExercises.find((exercise) => exercise.id === session.exerciseId)?.name ??
+                            '未命名動作';
+                          return (
+                            <div key={session.id} className="bg-transparent p-5 min-h-24 rounded-2xl border border-gray-200/80 flex items-center gap-4">
+                              <div className={`w-14 h-14 rounded-xl flex items-center justify-center font-bold text-xl ${session.score >= 85 ? 'bg-teal-50 text-teal-600' : 'bg-orange-50 text-orange-600'}`}>
+                                {session.score}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-bold text-gray-800 text-xl">
+                                  {exerciseName}
+                                </p>
+                                <p className="text-lg text-gray-500 mt-1">
+                                  {session.date} · {session.completedReps}次 · {session.duration}分
+                                </p>
+                              </div>
+                              <div className="text-xl font-bold text-blue-700">
+                                {session.maxAngle}°
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
+                    ) : (
+                      <div className="bg-transparent p-5 rounded-2xl border border-gray-200/80 text-xl text-gray-400">
+                        目前尚無訓練紀錄。
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {activeTab === 'alerts' && (
+                {activeTab === '通知' && (
                   <div className="space-y-3">
                     {mockNotifications.map(note => (
                       <div key={note.id} className={`p-5 rounded-2xl border-l-4 bg-white shadow-sm ${note.type === 'warning' ? 'border-orange-400' : 'border-teal-400'}`}>
