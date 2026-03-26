@@ -14,7 +14,31 @@ const YATING_SPEECH_PATH = '/v2/speeches/short';
 export const YATING_DEFAULT_MANDARIN_MODEL = 'zh_en_female_2';
 export const YATING_DEFAULT_TAIWANESE_MODEL = 'tai_female_2';
 
-const DEFAULT_VOICE_MODEL = YATING_DEFAULT_MANDARIN_MODEL;
+/** 與 .env 的 VITE_YATING_VOICE_PROFILE=yiqing 對應（非 API provider；API 仍為 VITE_TTS_PROVIDER=yating） */
+export const YATING_VOICE_PROFILE_YIQING = 'yiqing';
+
+/**
+ * 國語預設聲線：VITE_YATING_VOICE_PROFILE=yiqing（預設）→ 亦晴 zh_en_female_2；
+ * 可被 VITE_YATING_VOICE_MODEL 直接覆寫。
+ */
+export function resolveYatingMandarinVoiceModel(): string {
+  const override = import.meta.env.VITE_YATING_VOICE_MODEL?.trim();
+  if (override) return override;
+  const profile = (import.meta.env.VITE_YATING_VOICE_PROFILE ?? YATING_VOICE_PROFILE_YIQING)
+    .trim()
+    .toLowerCase();
+  if (profile === YATING_VOICE_PROFILE_YIQING) return YATING_DEFAULT_MANDARIN_MODEL;
+  return YATING_DEFAULT_MANDARIN_MODEL;
+}
+
+/**
+ * 台語預設聲線：亦晴為 tai_female_2；可被 VITE_YATING_TAI_VOICE_MODEL 覆寫。
+ */
+export function resolveYatingTaiwaneseVoiceModel(): string {
+  const override = import.meta.env.VITE_YATING_TAI_VOICE_MODEL?.trim();
+  if (override) return override;
+  return YATING_DEFAULT_TAIWANESE_MODEL;
+}
 
 function buildUrl(): string {
   if (import.meta.env.DEV) {
@@ -37,7 +61,7 @@ export function isYatingConfigured(): boolean {
 /** 動作有台語稿且使用者選台語時，雅婷改用 tai_*（可覆寫 yatingTaiVoiceModel） */
 export function resolveYatingVoiceModelForExercise(exercise: Exercise | undefined): string | undefined {
   if (!exercise?.voicePromptsTai) return undefined;
-  return (exercise.yatingTaiVoiceModel ?? YATING_DEFAULT_TAIWANESE_MODEL).trim();
+  return (exercise.yatingTaiVoiceModel ?? resolveYatingTaiwaneseVoiceModel()).trim();
 }
 
 /**
@@ -82,11 +106,7 @@ export async function synthesizeYatingSpeech(
     throw new Error('Empty TTS text');
   }
 
-  const model = (
-    options?.voiceModel?.trim() ||
-    import.meta.env.VITE_YATING_VOICE_MODEL ||
-    DEFAULT_VOICE_MODEL
-  ).trim();
+  const model = (options?.voiceModel?.trim() || resolveYatingMandarinVoiceModel()).trim();
   const sampleRate = model.startsWith('tai_') ? '16K' : '22K';
 
   const speed = parseEnvFloat(import.meta.env.VITE_YATING_SPEED, 0.85, 0.5, 1.5);

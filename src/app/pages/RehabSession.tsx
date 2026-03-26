@@ -19,7 +19,8 @@ import {
   isYatingConfigured,
   wantsYatingFromEnv,
   resolveYatingVoiceModelForExercise,
-  YATING_DEFAULT_TAIWANESE_MODEL,
+  resolveYatingMandarinVoiceModel,
+  resolveYatingTaiwaneseVoiceModel,
 } from '../services/yatingTts';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
@@ -107,9 +108,9 @@ export default function RehabSession() {
   const yatingVoiceModel = useMemo(() => {
     if (ttsProvider !== 'yating') return undefined;
     if (voiceDialect === 'taiwanese') {
-      return resolveYatingVoiceModelForExercise(exercise) ?? YATING_DEFAULT_TAIWANESE_MODEL;
+      return resolveYatingVoiceModelForExercise(exercise) ?? resolveYatingTaiwaneseVoiceModel();
     }
-    return (import.meta.env.VITE_YATING_VOICE_MODEL ?? 'zh_en_female_2').trim();
+    return resolveYatingMandarinVoiceModel();
   }, [ttsProvider, voiceDialect, exercise]);
 
   // 本機再略慢、少尖聲；國語／台語由 voiceDialect 決定雅婷聲線（zh_en_* vs tai_*）

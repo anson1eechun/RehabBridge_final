@@ -17,8 +17,15 @@ interface ImportMetaEnv {
   readonly VITE_OPENAI_TTS_INSTRUCTIONS?: string;
   /** 雅婷：正式直連用（金鑰暴露，勿用於產品） */
   readonly VITE_YATING_API_KEY?: string;
-  /** 國語：zh_en_female_1／2、zh_en_male_1／2；台語：tai_female_1／2、tai_male_1 */
+  /**
+   * 聲線角色（非 TTS 引擎）：預設 yiqing＝亦晴（zh_en_female_2／tai_female_2）。
+   * 引擎仍為 VITE_TTS_PROVIDER=yating。
+   */
+  readonly VITE_YATING_VOICE_PROFILE?: string;
+  /** 國語：zh_en_female_1／2、zh_en_male_1／2（亦晴女聲常見 zh_en_female_2） */
   readonly VITE_YATING_VOICE_MODEL?: string;
+  /** 台語：tai_female_1／2、tai_male_1（亦晴女聲常見 tai_female_2） */
+  readonly VITE_YATING_TAI_VOICE_MODEL?: string;
   readonly VITE_YATING_SPEED?: string;
   readonly VITE_YATING_PITCH?: string;
   readonly VITE_YATING_ENERGY?: string;
