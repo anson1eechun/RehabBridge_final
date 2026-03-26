@@ -39,6 +39,20 @@ export interface Exercise {
     achieved: string;
     complete: string;
   };
+  /**
+   * 台語陪練稿（雅婷 tai_*）。有設定且 VITE_TTS_PROVIDER=yating 時，訓練頁可切「台語」則唸此稿並用 tai_* 聲線；選「國語」則唸 voicePrompts。
+   * 本機 Web Speech 仍用 voicePrompts（國語）。
+   */
+  voicePromptsTai?: {
+    start: string;
+    tooLow: string;
+    achieved: string;
+    complete: string;
+    /** 角度過高時（可選；未設則用程式內建台語句） */
+    tooHigh?: string;
+  };
+  /** 覆寫雅婷台語聲線，預設 tai_female_2（亦晴） */
+  yatingTaiVoiceModel?: string;
   bodyArea: string;
   difficulty: 'easy' | 'medium' | 'hard';
 }
@@ -122,6 +136,8 @@ export const mockPatients: Patient[] = [
   { id: 'P005', name: '林志華', age: 66, gender: '男', diagnosis: '右肩沾黏性關節囊炎', doctorId: 'D001', familyContact: '林佩玲', avatar: '林', admissionDate: '2026-02-18', completionRate: 78, lastSessionDate: '2026-03-24', status: 'active' },
   { id: 'P006', name: '郭美玲', age: 64, gender: '女', diagnosis: '左膝半月板術後恢復期', doctorId: 'D001', familyContact: '郭俊宏', avatar: '郭', admissionDate: '2026-02-25', completionRate: 69, lastSessionDate: '2026-03-23', status: 'active' },
   { id: 'P007', name: '吳建成', age: 73, gender: '男', diagnosis: '髖關節活動受限合併肌力不足', doctorId: 'D001', familyContact: '吳雅芬', avatar: '吳', admissionDate: '2026-03-03', completionRate: 58, lastSessionDate: '2026-03-22', status: 'active' },
+  /** 示範：偏好台語衛教／語音陪練（處方見 RX022） */
+  { id: 'P008', name: '蔡金枝', age: 78, gender: '女', diagnosis: '雙膝退化性關節炎（偏好台語溝通）', doctorId: 'D001', familyContact: '蔡志成', avatar: '蔡', admissionDate: '2026-03-20', completionRate: 0, lastSessionDate: '—', status: 'active' },
 ];
 
 export const mockFamilyMembers: FamilyMember[] = [
@@ -141,11 +157,24 @@ export const mockExercises: Exercise[] = [
     name: '膝蓋彎曲訓練',
     nameEn: 'Knee Flexion',
     category: '下肢',
-    description: '測量髖-膝-踝角度，增強膝關節活動度',
+    description: '測量髖-膝-踝角度，增強膝關節活動度。使用雅婷時可於訓練頁頂部切換國語／台語語音。',
     targetAngle: 110, restAngle: 170, tolerance: 10, joints: [23, 25, 27],
     reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left',
     guidanceSteps: ['坐姿挺直', '腳跟滑向椅子', '保持三秒'],
-    voicePrompts: { start: '請開始彎曲膝蓋', tooLow: '再往後縮一點', achieved: '很好，請保持', complete: '膝蓋訓練完成' },
+    voicePrompts: {
+      start: '慢慢彎就好，不用急',
+      tooLow: '再彎進來一點',
+      achieved: '好，停一下',
+      complete: '好，這段先到這',
+    },
+    /** 雅婷陪練：語氣偏口語、句長適合 TTS（見教育部臺灣閩南語常用詞等參考） */
+    voicePromptsTai: {
+      start: '慢慢彎就好，莫急啦',
+      tooLow: '閣彎入來一屑啦',
+      achieved: '好，定咧',
+      complete: '先做到這啦',
+      tooHigh: '收一屑啦，莫硬撐',
+    },
     bodyArea: '膝蓋', difficulty: 'easy'
   },
   {
@@ -164,10 +193,10 @@ export const mockExercises: Exercise[] = [
     side: 'left',
     guidanceSteps: ['坐穩椅面', '慢慢將膝蓋打直', '腳尖朝上保持'],
     voicePrompts: {
-      start: '請將膝蓋慢慢打直',
-      tooLow: '再伸直一點',
-      achieved: '角度很好，請維持',
-      complete: '伸膝訓練完成',
+      start: '膝蓋慢慢打直，輕鬆就好',
+      tooLow: '再伸一點',
+      achieved: '行，停著',
+      complete: '這段好了，歇一下',
     },
     bodyArea: '膝蓋',
     difficulty: 'easy',
@@ -181,7 +210,12 @@ export const mockExercises: Exercise[] = [
     targetAngle: 90, restAngle: 20, tolerance: 10, joints: [23, 11, 13],
     reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left',
     guidanceSteps: ['手臂由側邊抬起', '與肩同高', '緩慢放下'],
-    voicePrompts: { start: '請向側邊抬起手臂', tooLow: '再抬高一點', achieved: '達到目標高度', complete: '肩膀訓練完成' },
+    voicePrompts: {
+      start: '手往旁邊舉，慢慢來',
+      tooLow: '再高一點',
+      achieved: '高度OK，停',
+      complete: '外展先到這',
+    },
     bodyArea: '肩膀', difficulty: 'medium'
   },
   {
@@ -200,15 +234,38 @@ export const mockExercises: Exercise[] = [
     side: 'left',
     guidanceSteps: ['手臂靠身體', '向前上方舉起', '與肩同高即可'],
     voicePrompts: {
-      start: '請將手臂向前舉起',
-      tooLow: '再高一點',
-      achieved: '高度不錯，請保持',
-      complete: '前舉訓練完成',
+      start: '往前舉，別聳肩',
+      tooLow: '還可以再高一點',
+      achieved: '這樣就行，停',
+      complete: '前舉結束',
     },
     bodyArea: '肩膀',
     difficulty: 'medium',
   },
-  { id: 'elbow_flexion', name: '手肘彎曲訓練', nameEn: 'Elbow Flexion', category: '上肢', description: '強化二頭肌肌力', targetAngle: 130, restAngle: 30, tolerance: 8, joints: [11, 13, 15], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['上臂固定', '前臂向上彎曲'], voicePrompts: { start: '請開始彎曲手肘', tooLow: '再用力彎一點', achieved: '非常棒', complete: '手肘訓練完成' }, bodyArea: '手肘', difficulty: 'easy' },
+  {
+    id: 'elbow_flexion',
+    name: '手肘彎曲訓練',
+    nameEn: 'Elbow Flexion',
+    category: '上肢',
+    description: '強化二頭肌肌力',
+    targetAngle: 130,
+    restAngle: 30,
+    tolerance: 8,
+    joints: [11, 13, 15],
+    reps: DEFAULT_REPS,
+    sets: DEFAULT_SETS,
+    holdSeconds: DEFAULT_HOLD_SEC,
+    side: 'left',
+    guidanceSteps: ['上臂固定', '前臂向上彎曲'],
+    voicePrompts: {
+      start: '手肘彎起來，肩膀鬆的',
+      tooLow: '再彎一點',
+      achieved: '有了，停',
+      complete: '彎曲這組結束',
+    },
+    bodyArea: '手肘',
+    difficulty: 'easy',
+  },
   {
     id: 'elbow_extension',
     name: '手肘伸展訓練',
@@ -225,18 +282,110 @@ export const mockExercises: Exercise[] = [
     side: 'left',
     guidanceSteps: ['上臂貼身固定', '慢慢將手肘打直', '勿聳肩'],
     voicePrompts: {
-      start: '請慢慢把手肘打直',
-      tooLow: '再伸直一些',
-      achieved: '很好，維持一下',
-      complete: '伸展訓練完成',
+      start: '手肘慢慢打直，呼吸照常',
+      tooLow: '再直一點',
+      achieved: 'OK，停一下',
+      complete: '伸展做完',
     },
     bodyArea: '手肘',
     difficulty: 'easy',
   },
-  { id: 'hip_abduction', name: '髖關節外展訓練', nameEn: 'Hip Abduction', category: '下肢', description: '強化步態穩定性', targetAngle: 35, restAngle: 5, tolerance: 5, joints: [24, 23, 25], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['腿部側向抬起', '骨盆保持水平'], voicePrompts: { start: '請向外側抬腿', tooLow: '請再抬高些', achieved: '維持平衡，很好', complete: '髖部訓練完成' }, bodyArea: '髖部', difficulty: 'medium' },
-  { id: 'leg_raise', name: '直腿抬舉訓練', nameEn: 'Leg Raise', category: '下肢', description: '訓練核心與股四頭肌', targetAngle: 45, restAngle: 5, tolerance: 5, joints: [11, 23, 25], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['平躺於墊子上', '膝蓋伸直抬起'], voicePrompts: { start: '請將整條腿抬起', tooLow: '腳不要彎', achieved: '高度正確', complete: '抬腿紀錄已儲存' }, bodyArea: '大腿', difficulty: 'medium' },
-  { id: 'squat', name: '靠牆深蹲訓練', nameEn: 'Wall Squat', category: '下肢', description: '下蹲測量膝蓋彎曲，強化股四頭肌與下肢肌力', targetAngle: 100, restAngle: 170, tolerance: 10, joints: [23, 25, 27], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'bilateral', guidanceSteps: ['背部貼牆', '緩慢下蹲'], voicePrompts: { start: '請沿著牆壁蹲下', tooLow: '再深一點點', achieved: '保持住', complete: '深蹲組數完成' }, bodyArea: '大腿', difficulty: 'hard' },
-  { id: 'side_leg_raise', name: '側面抬腿訓練', nameEn: 'Side Leg Raise', category: '下肢', description: '側臥強化中臀肌', targetAngle: 30, restAngle: 5, tolerance: 5, joints: [23, 24, 26], reps: DEFAULT_REPS, sets: DEFAULT_SETS, holdSeconds: DEFAULT_HOLD_SEC, side: 'left', guidanceSteps: ['身體側向一邊', '上方腿部抬起'], voicePrompts: { start: '請開始側面抬腿', tooLow: '再高一公分', achieved: '很好', complete: '側面訓練結束' }, bodyArea: '髖部', difficulty: 'medium' }
+  {
+    id: 'hip_abduction',
+    name: '髖關節外展訓練',
+    nameEn: 'Hip Abduction',
+    category: '下肢',
+    description: '強化步態穩定性',
+    targetAngle: 35,
+    restAngle: 5,
+    tolerance: 5,
+    joints: [24, 23, 25],
+    reps: DEFAULT_REPS,
+    sets: DEFAULT_SETS,
+    holdSeconds: DEFAULT_HOLD_SEC,
+    side: 'left',
+    guidanceSteps: ['腿部側向抬起', '骨盆保持水平'],
+    voicePrompts: {
+      start: '腿往旁邊抬，骨盆別跟著歪',
+      tooLow: '再高一點',
+      achieved: '穩，停',
+      complete: '外展先到這',
+    },
+    bodyArea: '髖部',
+    difficulty: 'medium',
+  },
+  {
+    id: 'leg_raise',
+    name: '直腿抬舉訓練',
+    nameEn: 'Leg Raise',
+    category: '下肢',
+    description: '訓練核心與股四頭肌',
+    targetAngle: 45,
+    restAngle: 5,
+    tolerance: 5,
+    joints: [11, 23, 25],
+    reps: DEFAULT_REPS,
+    sets: DEFAULT_SETS,
+    holdSeconds: DEFAULT_HOLD_SEC,
+    side: 'left',
+    guidanceSteps: ['平躺於墊子上', '膝蓋伸直抬起'],
+    voicePrompts: {
+      start: '腿抬起來，膝蓋能直就直',
+      tooLow: '再高一點',
+      achieved: '對，停',
+      complete: '抬腿這組結束',
+    },
+    bodyArea: '大腿',
+    difficulty: 'medium',
+  },
+  {
+    id: 'squat',
+    name: '靠牆深蹲訓練',
+    nameEn: 'Wall Squat',
+    category: '下肢',
+    description: '下蹲測量膝蓋彎曲，強化股四頭肌與下肢肌力',
+    targetAngle: 100,
+    restAngle: 170,
+    tolerance: 10,
+    joints: [23, 25, 27],
+    reps: DEFAULT_REPS,
+    sets: DEFAULT_SETS,
+    holdSeconds: DEFAULT_HOLD_SEC,
+    side: 'bilateral',
+    guidanceSteps: ['背部貼牆', '緩慢下蹲'],
+    voicePrompts: {
+      start: '背靠牆慢慢蹲，痛就別硬蹲',
+      tooLow: '能再深一點就深一點',
+      achieved: '這深度可以，停',
+      complete: '深蹲這輪結束',
+    },
+    bodyArea: '大腿',
+    difficulty: 'hard',
+  },
+  {
+    id: 'side_leg_raise',
+    name: '側面抬腿訓練',
+    nameEn: 'Side Leg Raise',
+    category: '下肢',
+    description: '側臥強化中臀肌',
+    targetAngle: 30,
+    restAngle: 5,
+    tolerance: 5,
+    joints: [23, 24, 26],
+    reps: DEFAULT_REPS,
+    sets: DEFAULT_SETS,
+    holdSeconds: DEFAULT_HOLD_SEC,
+    side: 'left',
+    guidanceSteps: ['身體側向一邊', '上方腿部抬起'],
+    voicePrompts: {
+      start: '側躺好，上面那條腿抬起來',
+      tooLow: '再高一點',
+      achieved: '行，停',
+      complete: '側抬結束',
+    },
+    bodyArea: '髖部',
+    difficulty: 'medium',
+  },
 ];
 
 /** 處方示範：各項目統一 10 次 × 3 組、保持 3 秒、每天兩次（僅目標角度／備註依個案調整） */
@@ -267,6 +416,7 @@ export const mockPrescriptions: Prescription[] = [
   { id: 'RX011', patientId: 'P005', doctorId: 'D001', exerciseId: 'shoulder_abduction', targetAngle: 95, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '避免代償聳肩', startDate: '2026-02-20', endDate: '2026-05-20', active: true },
   { id: 'RX012', patientId: 'P006', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 105, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '術後需注意疼痛回報', startDate: '2026-03-01', endDate: '2026-06-01', active: true },
   { id: 'RX013', patientId: 'P007', doctorId: 'D001', exerciseId: 'hip_abduction', targetAngle: 28, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '先穩定平衡再提高角度', startDate: '2026-03-05', endDate: '2026-06-05', active: true },
+  { id: 'RX022', patientId: 'P008', doctorId: 'D001', exerciseId: 'knee_flexion', targetAngle: 105, reps: RX_REPS, sets: RX_SETS, holdSeconds: RX_HOLD, frequency: RX_FREQ, notes: '蔡金枝：偏好台語溝通；訓練頁頂部可切換語音', startDate: '2026-03-20', endDate: '2026-06-20', active: true },
 ];
 
 // ─── 多維度專業統計數據 (Advanced Analytics) ───────────────────

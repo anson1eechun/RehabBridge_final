@@ -26,7 +26,7 @@ const architectureLayers = [
     items: [
       { name: 'RoleSelect', desc: '角色入口選擇頁面（長者／家屬／醫師／藍圖）' },
       { name: 'PatientPortal', desc: '長者端主頁：今日計畫僅有效處方；下肢／核心合計最多 2、上肢最多 2（腿 2＋手 2）' },
-      { name: 'RehabSession', desc: '相機即時姿態偵測、角度儀表、語音提示（僅 zh-TW）' },
+      { name: 'RehabSession', desc: '相機即時姿態偵測、角度儀表、語音提示（zh-TW）' },
       { name: 'FamilyDashboard', desc: '家屬監控儀表板' },
       { name: 'DoctorPortal', desc: '醫師管理與處方頁面' },
       { name: 'ChatWidget', desc: '全站浮動訊息（依路由角色切換對話脈絡）' },
@@ -40,7 +40,7 @@ const architectureLayers = [
     bg: '#E0F2F1',
     items: [
       { name: 'usePoseDetection', desc: 'TF.js MoveNet 姿態偵測 Hook' },
-      { name: 'useVoiceCoach', desc: 'Web Speech API 語音反饋（zh-TW，節流）' },
+      { name: 'useVoiceCoach', desc: '瀏覽器 SpeechSynthesis，或選配雅婷／OpenAI TTS（.env，節流）' },
       { name: 'angleCalculator / poseLogic', desc: '關節角度、左右側自動切換、可信度過濾' },
       { name: 'RehabSession State', desc: '組次、次數、保持倒數、達標狀態機' },
       { name: 'sessionStore', desc: '訓練紀錄：mock 資料 + localStorage 合併與跨頁同步' },
@@ -90,7 +90,7 @@ const userFlows = [
       { id: 4, action: '按「開始訓練」→ 相機啟動', note: '請求相機權限' },
       { id: 5, action: 'AI 偵測姿態 → 繪製骨架', note: 'TF.js 30fps 偵測' },
       { id: 6, action: '即時顯示關節角度', note: '大字體數字 + 顏色指示' },
-      { id: 7, action: '語音提示是否達到目標角度', note: '僅繁體中文（zh-TW）TTS；節流約 3 秒；已移除閩南語切換' },
+      { id: 7, action: '語音提示是否達到目標角度', note: '繁體中文（zh-TW）TTS；節流約 3 秒' },
       { id: 8, action: '達標 → 保持倒數計時', note: '綠色高亮 + 倒計時' },
       { id: 9, action: '完成組數次數 → 顯示成績', note: '訓練完成動畫' },
       { id: 10, action: '返回主頁查看進度', note: '更新今日完成狀態' },
@@ -273,7 +273,7 @@ export default function Blueprint() {
               <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 8 }}>分層架構總覽</h2>
               <p style={{ fontSize: 13, color: '#546E7A', lineHeight: 1.6 }}>
                 RehabBridge 採用四層分層架構，關注點分離、利於維護。技術棧：React + TypeScript + TailwindCSS；
-                姿態：TF.js MoveNet；語音：Web Speech API，僅繁體中文（zh-TW）。長者端今日計畫依分類與
+                姿態：TF.js MoveNet；語音：預設 Web Speech zh-TW，可改雅婷（國語／台語模型）或 OpenAI TTS。長者端今日計畫依分類與
                 bodyArea 排序；完成訓練會寫入 sessionStore（localStorage）與 mock 紀錄合併顯示。
               </p>
             </div>

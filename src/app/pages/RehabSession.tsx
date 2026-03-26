@@ -5,7 +5,7 @@
 // Doctor-prescribed target angle comparison
 // ============================================================
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft, Volume2, VolumeX, Play, Pause,
@@ -14,6 +14,12 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { usePoseDetection } from '../hooks/usePoseDetection';
 import { useVoiceCoach } from '../hooks/useVoiceCoach';
+import { isOpenAiConfigured, wantsOpenAiFromEnv } from '../services/openaiTts';
+import {
+  isYatingConfigured,
+  wantsYatingFromEnv,
+  resolveYatingVoiceModelForExercise,
+} from '../services/yatingTts';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
 import {
@@ -25,6 +31,7 @@ import {
 } from '../utils/angleCalculator';
 import { mockExercises, mockPrescriptions } from '../data/mockData';
 import { appendSessionRecord } from '../data/sessionStore';
+import { readVoiceDialectPreference } from '../utils/voiceDialectPreference';
 
 const PATIENT_ID = 'P001';
 /** 患者端：inline style 字級統一放大（約 +22%） */
@@ -49,6 +56,8 @@ export default function RehabSession() {
   const [feedbackType, setFeedbackType] = useState<'info' | 'success' | 'warning'>('info');
   const [sessionComplete, setSessionComplete] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 640, height: 480 });
+  /** 僅依長者首頁選擇（localStorage），復健頁內不提供語言按鈕 */
+  const [voiceDialect, setVoiceDialect] = useState(() => readVoiceDialectPreference());
 
   const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFeedbackRef = useRef<string>('');
@@ -82,53 +91,115 @@ export default function RehabSession() {
     isActive
   );
 
-  // Voice coach hook
+  const wantsYating = wantsYatingFromEnv();
+  const yatingReady = isYatingConfigured();
+  const wantsOpenAi = wantsOpenAiFromEnv();
+  const openAiReady = isOpenAiConfigured();
+  /** 雲端擇一：VITE_TTS_PROVIDER=yating 且金鑰就緒 → 雅婷；否則 openai；否則本機 */
+  const ttsProvider =
+    wantsYating && yatingReady ? 'yating' : wantsOpenAi && openAiReady ? 'openai' : 'browser';
+
+  const canPickVoiceDialect = ttsProvider === 'yating' && Boolean(exercise?.voicePromptsTai);
+
+  const yatingVoiceModel = useMemo(() => {
+    if (ttsProvider !== 'yating') return undefined;
+    if (canPickVoiceDialect && voiceDialect === 'taiwanese') {
+      return resolveYatingVoiceModelForExercise(exercise) ?? 'tai_female_1';
+    }
+    return (import.meta.env.VITE_YATING_VOICE_MODEL ?? 'zh_en_female_2').trim();
+  }, [ttsProvider, canPickVoiceDialect, voiceDialect, exercise]);
+
+  // 本機再略慢、少尖聲；國語／台語由 voiceDialect 決定雅婷聲線（zh_en_* vs tai_*）
   const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
     throttleMs: 3000,
     lang: 'zh-TW',
-    rate: 0.9,
-    pitch: 1.0,
+    rate: ttsProvider === 'browser' ? 0.88 : 0.92,
+    pitch: ttsProvider === 'browser' ? 0.98 : 1.0,
+    ttsProvider,
+    yatingVoiceModel,
   });
 
-  const goalBriefItems = [
-    `今天做「${exercise?.name ?? '本次動作'}」`,
-    `目標角度 ${targetAngle}°`,
-    `每組 ${totalReps} 次，共 ${totalSets} 組`,
-    `每次保持 ${effectiveHoldSeconds} 秒`,
-  ];
+  /** 與語音開場條列：依長者首頁語言偏好（voiceDialect）顯示國語或台語 */
+  const goalBriefItems = useMemo(() => {
+    const name = exercise?.name ?? '這個動作';
+    const zh: string[] = [
+      `今天是「${name}」`,
+      `角度大概抓 ${targetAngle} 度就行`,
+      `一組 ${totalReps} 下，總共 ${totalSets} 組`,
+      `有對到先停 ${effectiveHoldSeconds} 秒`,
+    ];
+    const tai: string[] = [
+      `今仔日是「${name}」`,
+      `角度大約 ${targetAngle} 度就好`,
+      `一組 ${totalReps} 下，攏總 ${totalSets} 組`,
+      `有對著先停 ${effectiveHoldSeconds} 秒`,
+    ];
+    return voiceDialect === 'taiwanese' ? tai : zh;
+  }, [
+    exercise?.name,
+    voiceDialect,
+    targetAngle,
+    totalReps,
+    totalSets,
+    effectiveHoldSeconds,
+  ]);
 
   const buildGoalBriefText = useCallback(() => {
-    return `先聽今天的目標。${goalBriefItems.join('。')}。準備好後按開始偵測。`;
-  }, [goalBriefItems]);
+    const name = exercise?.name ?? '這個動作';
+    if (voiceDialect === 'taiwanese') {
+      return `共你講一下，今仔日是「${name}」。角度大約${targetAngle}度就好，一組${totalReps}下、攏總${totalSets}組；有對著就定${effectiveHoldSeconds}秒。莫急，看畫面，欲開始才按開始。`;
+    }
+    return `跟你講一下，今天是「${name}」。角度大概抓${targetAngle}度就行，一組${totalReps}下、總共${totalSets}組；有對到就停${effectiveHoldSeconds}秒。不用急，看好畫面，準備好了再按開始。`;
+  }, [
+    exercise?.name,
+    voiceDialect,
+    targetAngle,
+    totalReps,
+    totalSets,
+    effectiveHoldSeconds,
+  ]);
 
   const speakGoalBrief = useCallback(() => {
     speak(buildGoalBriefText(), true, 'zh-TW');
   }, [buildGoalBriefText, speak]);
 
-  const getVoiceText = useCallback((key: string, n?: number) => {
-    switch (key) {
-      case 'start':
-        return exercise?.voicePrompts.start ?? '請開始動作';
-      case 'achieved':
-        return exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持';
-      case 'complete':
-        return exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！';
-      case 'setComplete':
-        return `第 ${n ?? 1} 組完成，請休息一下`;
-      case 'repComplete':
-        return `第 ${n ?? 1} 次`;
-      case 'tooLow':
-        return exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度';
-      case 'tooHigh':
-        return (exercise?.voicePrompts as any)?.tooHigh ?? '請稍微放鬆一些';
-      case 'paused':
-        return '訓練已暫停';
-      case 'resume':
-        return '繼續訓練';
-      default:
-        return '';
-    }
-  }, [exercise]);
+  const handleListenGoalBrief = useCallback(() => {
+    speakGoalBrief();
+  }, [speakGoalBrief]);
+
+  const getVoiceText = useCallback(
+    (key: string, n?: number) => {
+      const tai = exercise?.voicePromptsTai;
+      const useTai = canPickVoiceDialect && voiceDialect === 'taiwanese' && tai;
+      switch (key) {
+        case 'start':
+          return (useTai ? tai.start : exercise?.voicePrompts.start) ?? '好，動起來';
+        case 'achieved':
+          return (useTai ? tai.achieved : exercise?.voicePrompts.achieved) ?? '有囉，角度對了，先停著';
+        case 'complete':
+          return (useTai ? tai.complete : exercise?.voicePrompts.complete) ?? '今天這樣就夠了，收工';
+        case 'setComplete':
+          return useTai
+            ? `第${n ?? 1}組先到這。喘一下，等等閣下一組`
+            : `第${n ?? 1}組先到這。喘一下，等等再下一組`;
+        case 'repComplete':
+          return useTai ? `第${n ?? 1}下有了啦` : `第${n ?? 1}下有了`;
+        case 'tooLow':
+          return (useTai ? tai.tooLow : exercise?.voicePrompts.tooLow) ?? '還差一點，再開一點沒關係';
+        case 'tooHigh':
+          return useTai
+            ? (exercise?.voicePromptsTai?.tooHigh ?? '收一屑啦，莫硬拚')
+            : ((exercise?.voicePrompts as { tooHigh?: string })?.tooHigh ?? '收一點，別硬拚');
+        case 'paused':
+          return useTai ? '好，先停啦' : '好，先停';
+        case 'resume':
+          return useTai ? '好，閣繼續' : '行，繼續';
+        default:
+          return '';
+      }
+    },
+    [exercise, canPickVoiceDialect, voiceDialect]
+  );
 
   const speakLocalized = useCallback(
     (key: string, force = false, n?: number) => {
@@ -202,6 +273,12 @@ export default function RehabSession() {
 
   useEffect(() => {
     goalBriefAnnouncedRef.current = false;
+  }, [exerciseId]);
+
+  useEffect(() => {
+    setVoiceDialect(readVoiceDialectPreference());
+    setSessionStarted(false);
+    setIsActive(false);
   }, [exerciseId]);
 
   const [displayAngle, setDisplayAngle] = useState(0);
@@ -320,7 +397,7 @@ export default function RehabSession() {
         setHoldCountdown(effectiveHoldSeconds);
         if (!isThrottled || lastFeedbackRef.current !== 'achieved') {
           speakLocalized('achieved', false);
-          setFeedbackMessage(`✅ 達到目標！保持 ${effectiveHoldSeconds} 秒`);
+          setFeedbackMessage(`對了，就這樣停個 ${effectiveHoldSeconds} 秒`);
           setFeedbackType('success');
           lastFeedbackRef.current = 'achieved';
           lastFeedbackTimeRef.current = now;
@@ -345,11 +422,11 @@ export default function RehabSession() {
                     setSessionComplete(true);
                     setIsActive(false);
                     speakLocalized('complete', false);
-                    setFeedbackMessage('🎉 訓練完成！');
+                    setFeedbackMessage('今天這輪做完了');
                     setFeedbackType('success');
                   } else {
                     speakLocalized('setComplete', false, prevSet);
-                    setFeedbackMessage(`第 ${prevSet} 組完成，準備下一組`);
+                    setFeedbackMessage(`第${prevSet}組結束，等等下一組`);
                     setFeedbackType('info');
                   }
                   return nextSet > totalSets ? prevSet : nextSet;
@@ -357,7 +434,7 @@ export default function RehabSession() {
                 return 0;
               }
               speakLocalized('repComplete', false, next);
-              setFeedbackMessage(`第 ${next} 次完成`);
+              setFeedbackMessage(`第${next}下OK`);
               setFeedbackType('info');
               return next;
             });
@@ -381,11 +458,11 @@ export default function RehabSession() {
       if (!isThrottled) {
         if (angleResult.status === 'below') {
           speakLocalized('tooLow', false);
-          setFeedbackMessage('📈 請繼續加大動作幅度');
+          setFeedbackMessage('再開一點就好');
           setFeedbackType('warning');
         } else if (angleResult.status === 'above') {
           speakLocalized('tooHigh', false);
-          setFeedbackMessage('📉 請稍微放鬆一些');
+          setFeedbackMessage('收一點，鬆一下');
           setFeedbackType('warning');
         }
         lastFeedbackTimeRef.current = now;
@@ -439,10 +516,16 @@ export default function RehabSession() {
   useEffect(() => {
     if (!exercise || sessionStarted || status === 'loading' || goalBriefAnnouncedRef.current) return;
     goalBriefAnnouncedRef.current = true;
-    setFeedbackMessage('請先看本次目標，準備好再開始偵測');
+    const needPickFirst = ttsProvider === 'yating' && exercise.voicePromptsTai;
+    if (needPickFirst) {
+      setFeedbackMessage('再按「聽開場說明」');
+      setFeedbackType('info');
+      return;
+    }
+    setFeedbackMessage('下面會念今天的練法，聽完再按開始');
     setFeedbackType('info');
     speakGoalBrief();
-  }, [exercise, sessionStarted, speakGoalBrief, status]);
+  }, [exercise, sessionStarted, speakGoalBrief, status, ttsProvider]);
 
   // Start session
   const handleStart = () => {
@@ -453,7 +536,7 @@ export default function RehabSession() {
     angleStatsRef.current = { sum: 0, count: 0, max: 0 };
     voiceFeedbackCountRef.current = 0;
     sessionSavedRef.current = false;
-    setFeedbackMessage(exercise?.voicePrompts.start ?? '請開始動作');
+    setFeedbackMessage(exercise?.voicePrompts.start ?? '好，動起來');
     setFeedbackType('info');
     speakLocalized('start', true);
   };
@@ -461,14 +544,14 @@ export default function RehabSession() {
   const handlePause = () => {
     setIsActive(false);
     speakLocalized('paused', true);
-    setFeedbackMessage('訓練已暫停');
+    setFeedbackMessage('先停，要繼續再按');
     setFeedbackType('info');
   };
 
   const handleResume = () => {
     setIsActive(true);
     speakLocalized('resume', true);
-    setFeedbackMessage('繼續訓練');
+    setFeedbackMessage('繼續');
     setFeedbackType('info');
   };
 
@@ -501,7 +584,7 @@ export default function RehabSession() {
       <div className="min-h-screen flex items-center justify-center" style={{ background: '#EEF2F7' }}>
         <div className="text-center">
           <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
-          <p style={{ fontSize: patientPx(18), color: '#546E7A' }}>找不到此訓練項目</p>
+          <p style={{ fontSize: patientPx(18), color: '#546E7A' }}>這個項目目前找不到，先回首頁看看好嗎？</p>
           <button onClick={() => navigate('/patient')} className="mt-4 px-6 py-3 rounded-xl bg-blue-600 text-white">
             返回
           </button>
@@ -517,8 +600,9 @@ export default function RehabSession() {
 
   return (
     <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#111D2D' }}>
-      {/* Top Navigation Bar */}
-      <div className="flex items-center justify-between px-5 py-4" style={{ background: '#1A2840', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* Top Navigation Bar（語音語言僅於長者首頁選定） */}
+      <div style={{ background: '#1A2840', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center justify-between px-5 py-4">
         <button
           onClick={() => { setIsActive(false); navigate('/patient'); }}
           className="flex items-center gap-2 px-5 py-3 rounded-2xl hover:bg-white/10 transition-colors"
@@ -558,6 +642,61 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
+          <div
+            className="px-2 py-1 rounded-lg shrink-0 max-w-[140px] leading-tight"
+            style={{
+              background:
+                ttsProvider === 'yating'
+                  ? 'rgba(3,169,244,0.26)'
+                  : ttsProvider === 'openai'
+                    ? 'rgba(16,163,127,0.28)'
+                    : wantsYating && !yatingReady
+                      ? 'rgba(255,167,38,0.22)'
+                      : wantsOpenAi && !openAiReady
+                        ? 'rgba(255,167,38,0.22)'
+                        : 'rgba(255,255,255,0.08)',
+            }}
+            title={
+              ttsProvider === 'yating'
+                ? canPickVoiceDialect
+                  ? '雅婷：國語／台語在長者首頁選；此處僅依該設定（zh_en_*／tai_*）'
+                  : '雅婷 TTS：國語用 zh_en_*（VITE_YATING_VOICE_MODEL）；語速／音高 VITE_YATING_SPEED 等'
+                : ttsProvider === 'openai'
+                  ? 'OpenAI gpt-4o-mini-tts；可用 VITE_OPENAI_TTS_VOICE、VITE_OPENAI_TTS_INSTRUCTIONS、VITE_OPENAI_TTS_SPEED 微調'
+                  : wantsYating && !yatingReady
+                    ? '想走雅婷：.env 需 YATING_API_KEY（dev 代理）、VITE_TTS_PROVIDER=yating，改完重開 npm run dev'
+                    : wantsOpenAi && !openAiReady
+                      ? '想走 OpenAI：.env 需 OPENAI_API_KEY（dev 代理）、VITE_TTS_PROVIDER=openai，改完重開 npm run dev'
+                      : '本機語音（用 Edge 或 Windows 版 Chrome 時會優先選微軟神經中文聲）'
+            }
+          >
+            <span
+              style={{
+                fontSize: patientPx(10),
+                fontWeight: 700,
+                color:
+                  ttsProvider === 'yating'
+                    ? '#81D4FA'
+                    : ttsProvider === 'openai'
+                      ? '#A5D6A7'
+                      : wantsYating && !yatingReady
+                        ? '#FFE082'
+                        : wantsOpenAi && !openAiReady
+                          ? '#FFE082'
+                          : 'rgba(255,255,255,0.55)',
+              }}
+            >
+              {ttsProvider === 'yating'
+                ? '雅婷'
+                : ttsProvider === 'openai'
+                  ? 'OpenAI'
+                  : wantsYating && !yatingReady
+                    ? '雅婷未就緒'
+                    : wantsOpenAi && !openAiReady
+                      ? 'OpenAI 未就緒'
+                      : '本機語音'}
+            </span>
+          </div>
           {/* FPS indicator */}
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>
@@ -577,6 +716,7 @@ export default function RehabSession() {
             {voiceEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
           </button>
         </div>
+      </div>
       </div>
 
       {/* Main Layout: Camera + Sidebar */}
@@ -607,76 +747,109 @@ export default function RehabSession() {
             highlightJoints={activeJoints}
           />
 
-          {/* Loading / Error Overlay */}
+          {/* 載入中：不論是否已按開始，都顯示（與舊版一致：按開始後仍會看到載入動畫） */}
           <AnimatePresence>
-            {(status === 'idle' || status === 'loading') && (
+            {status === 'loading' && (
               <motion.div
+                key="pose-loading"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 flex flex-col items-center justify-center"
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center"
                 style={{ background: '#0D1B2A' }}
               >
-                {status === 'loading' ? (
-                  <>
-                    <div className="w-24 h-24 border-[5px] border-blue-400 border-t-transparent rounded-full animate-spin mb-8" />
-                    <p style={{ color: 'white', fontSize: patientPx(28), fontWeight: 700 }}>正在載入姿態偵測模型...</p>
-                    <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: patientPx(22), marginTop: 12, fontWeight: 600 }}>
-                      首次載入需數秒，請稍候
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center px-6 sm:px-10 w-full max-w-xl mx-auto">
-                    <div
-                      className="w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center mb-6 sm:mb-8 mx-auto"
-                      style={{ background: 'rgba(102,187,106,0.15)' }}
-                    >
-                      <CheckCircle size={64} style={{ color: '#66BB6A' }} />
-                    </div>
-                    <h2
-                      style={{
-                        color: 'white',
-                        fontSize: 'clamp(2.1rem, 5.5vw, 2.85rem)',
-                        fontWeight: 800,
-                        marginBottom: 24,
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {exercise.name}
-                    </h2>
-                    <div
-                      className="rounded-3xl px-6 py-5 sm:px-8 sm:py-6 mb-6 sm:mb-8 text-left border border-white/10"
-                      style={{ background: 'rgba(255,255,255,0.1)' }}
-                    >
-                      {goalBriefItems.map((item, i) => (
-                        <p
-                          key={item}
-                          style={{
-                            color: 'rgba(255,255,255,0.95)',
-                            fontSize: 'clamp(1.45rem, 4.2vw, 1.88rem)',
-                            lineHeight: 1.65,
-                            fontWeight: 600,
-                            marginBottom: i === goalBriefItems.length - 1 ? 0 : 14,
-                          }}
-                        >
-                          • {item}
-                        </p>
-                      ))}
-                    </div>
+                <div className="w-24 h-24 border-[5px] border-blue-400 border-t-transparent rounded-full animate-spin mb-8" />
+                <p style={{ color: 'white', fontSize: patientPx(28), fontWeight: 700 }}>正在載入姿態偵測模型…</p>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: patientPx(22), marginTop: 12, fontWeight: 600 }}>
+                  第一次會多花幾秒鐘，麻煩稍等一下喔
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* 開場說明：課程未開始且非載入／錯誤時顯示；含相機已開、姿態偵測中（例如重試後），避免畫面上沒有說明與開始鈕 */}
+          <AnimatePresence>
+            {!sessionStarted && status !== 'error' && status !== 'no-camera' && status !== 'loading' && (
+              <motion.div
+                key="goal-brief"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center overflow-y-auto"
+                style={{
+                  background:
+                    status === 'detecting'
+                      ? 'rgba(13, 27, 42, 0.94)'
+                      : '#0D1B2A',
+                  backdropFilter: status === 'detecting' ? 'blur(2px)' : undefined,
+                }}
+              >
+                <div className="text-center px-6 sm:px-10 w-full max-w-xl mx-auto py-6">
+                  <div
+                    className="w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center mb-6 sm:mb-8 mx-auto"
+                    style={{ background: 'rgba(102,187,106,0.15)' }}
+                  >
+                    <CheckCircle size={64} style={{ color: '#66BB6A' }} />
+                  </div>
+                  <h2
+                    style={{
+                      color: 'white',
+                      fontSize: 'clamp(2.1rem, 5.5vw, 2.85rem)',
+                      fontWeight: 800,
+                      marginBottom: 24,
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {exercise.name}
+                  </h2>
+                  <div
+                    className="rounded-3xl px-6 py-5 sm:px-8 sm:py-6 mb-6 sm:mb-8 text-left border border-white/10"
+                    style={{ background: 'rgba(255,255,255,0.1)' }}
+                  >
+                    {goalBriefItems.map((item, i) => (
+                      <p
+                        key={`goal-${i}`}
+                        style={{
+                          color: 'rgba(255,255,255,0.95)',
+                          fontSize: 'clamp(1.45rem, 4.2vw, 1.88rem)',
+                          lineHeight: 1.65,
+                          fontWeight: 600,
+                          marginBottom: i === goalBriefItems.length - 1 ? 0 : 14,
+                        }}
+                      >
+                        • {item}
+                      </p>
+                    ))}
+                  </div>
+                  <div className="w-full mb-5">
                     <button
-                      onClick={handleStart}
-                      className="w-full py-6 sm:py-7 rounded-2xl text-white flex items-center justify-center gap-3 shadow-lg"
+                      type="button"
+                      onClick={handleListenGoalBrief}
+                      className="w-full py-4 rounded-2xl border-2 flex items-center justify-center gap-2"
                       style={{
-                        background: 'linear-gradient(135deg, #42A5F5, #1976D2)',
-                        fontSize: 'clamp(1.45rem, 4vw, 1.9rem)',
+                        borderColor: 'rgba(129,212,250,0.55)',
+                        background: 'rgba(3,169,244,0.12)',
+                        color: '#B3E5FC',
+                        fontSize: 'clamp(1.15rem, 3.2vw, 1.4rem)',
                         fontWeight: 800,
                       }}
                     >
-                      <Play size={36} className="shrink-0" />
-                      我知道了，開始偵測
+                      <Volume2 size={26} className="shrink-0" />
+                      聽開場說明
                     </button>
                   </div>
-                )}
+                  <button
+                    onClick={handleStart}
+                    className="w-full py-6 sm:py-7 rounded-2xl text-white flex items-center justify-center gap-3 shadow-lg"
+                    style={{
+                      background: 'linear-gradient(135deg, #42A5F5, #1976D2)',
+                      fontSize: 'clamp(1.45rem, 4vw, 1.9rem)',
+                      fontWeight: 800,
+                    }}
+                  >
+                    <Play size={36} className="shrink-0" />
+                    好，準備好了就開始吧
+                  </button>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -761,7 +934,7 @@ export default function RehabSession() {
                 <CheckCircle size={80} style={{ color: '#66BB6A', margin: '0 auto 16px' }} />
               </motion.div>
               <h2 style={{ color: 'white', fontSize: patientPx(28), fontWeight: 800, marginBottom: 8 }}>
-                訓練完成！
+                練習完成囉！
               </h2>
               <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: patientPx(16), marginBottom: 32 }}>
                 {totalSets} 組 × {totalReps} 次 · 最高角度 {currentAngle}°
@@ -775,7 +948,7 @@ export default function RehabSession() {
                 <button onClick={() => navigate('/patient')}
                   className="px-6 py-3 rounded-2xl flex items-center gap-2 text-white"
                   style={{ background: 'linear-gradient(135deg, #1565C0, #0D47A1)', fontSize: patientPx(16), fontWeight: 700 }}>
-                  <CheckCircle size={18} /> 完成返回
+                  <CheckCircle size={18} /> 回到首頁
                 </button>
               </div>
             </motion.div>
@@ -847,7 +1020,7 @@ export default function RehabSession() {
                 marginBottom: 8,
               }}
             >
-              語音提示
+              陪練提示
             </div>
             <AnimatePresence mode="wait">
               <motion.div
@@ -873,7 +1046,7 @@ export default function RehabSession() {
                   lineHeight: !sessionStarted ? 1.55 : 1.5,
                   fontWeight: !sessionStarted ? 600 : 400,
                 }}>
-                  {feedbackMessage || '等待開始訓練...'}
+                  {feedbackMessage || '看好畫面，要開始再按'}
                 </p>
               </motion.div>
             </AnimatePresence>
@@ -889,7 +1062,7 @@ export default function RehabSession() {
                 marginBottom: 10,
               }}
             >
-              訓練資訊
+              今天這樣練
             </div>
             {[
               { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
@@ -952,7 +1125,7 @@ export default function RehabSession() {
             )}
           </div>
 
-          {/* 訓練中才顯示控制鈕；開始請用畫面中央「我知道了，開始偵測」 */}
+          {/* 訓練中才顯示控制鈕；開始前用畫面中央大鈕 */}
           {sessionStarted && (
             <div className="p-4">
               <div className="flex gap-2">

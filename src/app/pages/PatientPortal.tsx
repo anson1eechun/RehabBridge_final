@@ -1,7 +1,7 @@
 // ============================================================
 // PatientPortal — 長者端主頁 (專業雙欄固定版)
 // ============================================================
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Activity, CheckCircle, Clock, Award,
@@ -14,6 +14,11 @@ import {
 } from '../data/mockData';
 import { useSessionRecords, buildWeeklyActivityFromSessions } from '../data/sessionStore';
 import {
+  readVoiceDialectPreference,
+  writeVoiceDialectPreference,
+  type VoiceDialectPreference,
+} from '../utils/voiceDialectPreference';
+import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
   BarChart, Bar, CartesianGrid, LineChart, Line
 } from 'recharts';
@@ -24,6 +29,14 @@ export default function PatientPortal() {
   const navigate = useNavigate();
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const sessionRecords = useSessionRecords();
+  const [planVoiceDialect, setPlanVoiceDialect] = useState<VoiceDialectPreference>(() =>
+    readVoiceDialectPreference()
+  );
+  const pickPlanVoiceDialect = useCallback((d: VoiceDialectPreference) => {
+    setPlanVoiceDialect(d);
+    writeVoiceDialectPreference(d);
+    window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+  }, []);
 
   const [greeting] = useState(() => {
     const h = new Date().getHours();
@@ -38,7 +51,7 @@ export default function PatientPortal() {
     { id: 3, title: '家屬關懷', body: '小美：爸，記得要做今天的復健喔！', time: '昨天' },
     { id: 4, title: '訓練提醒', body: '晚餐後是您習慣的第二次訓練時段，先做 3 分鐘暖身再開始。', time: '30 分鐘前' },
     { id: 5, title: '回診提醒', body: '下週三 10:30 與陳醫師視訊回診，請預留約 20 分鐘並準備好平板。', time: '昨天 18:00' },
-    { id: 6, title: '語音教練更新', body: '中文語音提示已優化，進入動作頁可按「說明」重聽要點。', time: '2 天前' },
+    { id: 6, title: '語音教練更新', body: '提示改短、比較像人在旁邊講；進動作頁可按「說明」重聽。', time: '2 天前' },
     { id: 7, title: '本週小結', body: '本週您完成訓練 12 次，平均得分 84 分，比上週進步 3 分。', time: '3 天前' },
     { id: 8, title: '安全小叮嚀', body: '訓練時請穿防滑鞋、地面保持乾燥；若頭暈請先坐下休息。', time: '4 天前' },
     { id: 9, title: '成就解鎖', body: '恭喜獲得「一週全勤」徽章，繼續保持！', time: '上週日' },
@@ -258,6 +271,47 @@ export default function PatientPortal() {
                 </span>
               </div>
 
+              <div
+                className="mb-5 rounded-2xl border-2 border-sky-200 bg-gradient-to-br from-sky-50 to-blue-50/90 px-4 py-3 sm:px-5 sm:py-4 shadow-sm"
+                role="group"
+                aria-label="陪練語言：國語或台語（與開場說明、語音回饋連動；復健頁依此設定）"
+              >
+                <div className="flex gap-3 sm:gap-4">
+                  <button
+                    type="button"
+                    onClick={() => pickPlanVoiceDialect('mandarin')}
+                    className="flex-1 min-h-[3.75rem] sm:min-h-[4.25rem] rounded-2xl border-2 font-black text-xl sm:text-2xl transition-all active:scale-[0.98]"
+                    style={{
+                      borderColor: planVoiceDialect === 'mandarin' ? '#0284c7' : '#cbd5e1',
+                      background: planVoiceDialect === 'mandarin' ? '#0ea5e9' : '#fff',
+                      color: planVoiceDialect === 'mandarin' ? '#fff' : '#64748b',
+                      boxShadow:
+                        planVoiceDialect === 'mandarin'
+                          ? '0 4px 14px rgba(14,165,233,0.35)'
+                          : 'none',
+                    }}
+                  >
+                    國語
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => pickPlanVoiceDialect('taiwanese')}
+                    className="flex-1 min-h-[3.75rem] sm:min-h-[4.25rem] rounded-2xl border-2 font-black text-xl sm:text-2xl transition-all active:scale-[0.98]"
+                    style={{
+                      borderColor: planVoiceDialect === 'taiwanese' ? '#0284c7' : '#cbd5e1',
+                      background: planVoiceDialect === 'taiwanese' ? '#0ea5e9' : '#fff',
+                      color: planVoiceDialect === 'taiwanese' ? '#fff' : '#64748b',
+                      boxShadow:
+                        planVoiceDialect === 'taiwanese'
+                          ? '0 4px 14px rgba(14,165,233,0.35)'
+                          : 'none',
+                    }}
+                  >
+                    台語
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 md:gap-5">
                 {displayExercises.map((item) => {
                   const ex = item.exercise;
@@ -274,7 +328,11 @@ export default function PatientPortal() {
                       key={item.id}
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => navigate(`/patient/rehab/${ex.id}`)}
+                      onClick={() => {
+                        writeVoiceDialectPreference(planVoiceDialect);
+                        window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+                        navigate(`/patient/rehab/${ex.id}`);
+                      }}
                       className={`relative flex flex-col overflow-hidden p-5 sm:p-6 min-h-[11.5rem] sm:min-h-[12.5rem] md:min-h-52 rounded-2xl text-left transition-all shadow-md border ${
                         isDone ? 'bg-green-50 border-green-100' : 'bg-white border-gray-100'
                       }`}
