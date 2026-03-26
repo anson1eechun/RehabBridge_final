@@ -83,8 +83,13 @@ export default function FamilyDashboard() {
       <div className="bg-gradient-to-r from-teal-600 to-teal-800 pt-8 pb-16 px-8">
         <div className="max-w-7xl mx-auto flex justify-between items-start">
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white/70 hover:text-white mb-4 transition-colors">
-              <ArrowLeft size={18} /> <span>返回身分選擇</span>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="flex flex-nowrap items-center gap-2.5 text-white/85 hover:text-white mb-4 transition-colors text-2xl md:text-3xl font-bold min-h-[52px] w-fit rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-5 py-2.5 active:scale-[0.98] -ml-1"
+            >
+              <ArrowLeft size={30} strokeWidth={2.5} className="shrink-0" aria-hidden />
+              <span className="whitespace-nowrap">返回身分選擇</span>
             </button>
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold backdrop-blur-md border border-white/30">

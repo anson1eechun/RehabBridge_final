@@ -34,14 +34,6 @@ export function useVoiceCoach(options: VoiceCoachOptions = {}) {
     const exact = voices.find((v) => v.lang.toLowerCase() === normalized);
     if (exact) return exact;
 
-    // If nan-TW voice is unavailable, prioritize Taiwan-flavored voices.
-    if (normalized.startsWith('nan')) {
-      const twNamed = voices.find((v) =>
-        /taiwan|台灣|臺灣|hokkien|minnan|taiyu/i.test(`${v.name} ${v.lang}`)
-      );
-      if (twNamed) return twNamed;
-    }
-
     const family = normalized.split('-')[0];
     const familyMatch = voices.find((v) => v.lang.toLowerCase().startsWith(family));
     if (familyMatch) return familyMatch;

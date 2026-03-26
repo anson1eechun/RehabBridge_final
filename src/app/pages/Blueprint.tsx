@@ -24,13 +24,14 @@ const architectureLayers = [
     color: '#1565C0',
     bg: '#E3F2FD',
     items: [
-      { name: 'RoleSelect', desc: '角色入口選擇頁面' },
-      { name: 'PatientPortal', desc: '長者端主頁，今日計畫' },
-      { name: 'RehabSession', desc: '相機復健訓練頁面' },
+      { name: 'RoleSelect', desc: '角色入口選擇頁面（長者／家屬／醫師／藍圖）' },
+      { name: 'PatientPortal', desc: '長者端主頁：今日計畫僅有效處方；下肢／核心合計最多 2、上肢最多 2（腿 2＋手 2）' },
+      { name: 'RehabSession', desc: '相機即時姿態偵測、角度儀表、語音提示（僅 zh-TW）' },
       { name: 'FamilyDashboard', desc: '家屬監控儀表板' },
       { name: 'DoctorPortal', desc: '醫師管理與處方頁面' },
+      { name: 'ChatWidget', desc: '全站浮動訊息（依路由角色切換對話脈絡）' },
     ],
-    components: ['SkeletonCanvas', 'AngleGauge', 'ProgressChart'],
+    components: ['SkeletonCanvas', 'AngleGauge', 'Recharts', 'motion/react'],
   },
   {
     name: 'Business Logic Layer',
@@ -39,10 +40,10 @@ const architectureLayers = [
     bg: '#E0F2F1',
     items: [
       { name: 'usePoseDetection', desc: 'TF.js MoveNet 姿態偵測 Hook' },
-      { name: 'useVoiceCoach', desc: 'Web Speech API 語音反饋 Hook' },
-      { name: 'AngleCalculator', desc: '關節角度計算與狀態判斷' },
-      { name: 'SessionState', desc: '組次、次數、保持計時狀態管理' },
-      { name: 'NotificationService', desc: '訓練提醒與家屬通知' },
+      { name: 'useVoiceCoach', desc: 'Web Speech API 語音反饋（zh-TW，節流）' },
+      { name: 'angleCalculator / poseLogic', desc: '關節角度、左右側自動切換、可信度過濾' },
+      { name: 'RehabSession State', desc: '組次、次數、保持倒數、達標狀態機' },
+      { name: 'sessionStore', desc: '訓練紀錄：mock 資料 + localStorage 合併與跨頁同步' },
     ],
     components: ['React State', 'useEffect', 'useCallback', 'useRef'],
   },
@@ -66,11 +67,11 @@ const architectureLayers = [
     color: '#BF360C',
     bg: '#FBE9E7',
     items: [
-      { name: 'MockDataRepo', desc: '靜態 Mock 資料 (患者/處方/記錄)' },
+      { name: 'mockData.ts', desc: '患者、處方、動作庫、訊息與示範 Session 紀錄' },
       { name: 'TFJSPoseService', desc: 'TF.js createDetector + estimatePoses' },
-      { name: 'TTSService', desc: 'SpeechSynthesis API + zh-TW 語音' },
-      { name: 'LocalStorageService', desc: '訓練記錄本地持久化 (未來)' },
-      { name: 'FirebaseRepo', desc: '雲端資料同步 (未來: Firestore)' },
+      { name: 'TTSService', desc: 'SpeechSynthesis API，語系 zh-TW' },
+      { name: 'sessionStore (localStorage)', desc: '鍵 rehabbridge.customSessionRecords.v1，與 mock 合併供儀表板使用' },
+      { name: 'FirebaseRepo', desc: '雲端資料同步（規劃中：Firestore）' },
     ],
     components: ['TypeScript Types', 'Async/Await', 'IndexedDB'],
   },
@@ -84,12 +85,12 @@ const userFlows = [
     bg: '#E3F2FD',
     steps: [
       { id: 1, action: '開啟 App → 選擇「長者端」', note: '大字體、高對比介面' },
-      { id: 2, action: '查看今日訓練計畫', note: '顯示處方項目與預計時間' },
-      { id: 3, action: '點選訓練項目', note: '顯示動作說明與指導圖' },
+      { id: 2, action: '查看今日訓練計畫', note: '有效處方中腿部復健 2 項＋手部復健 2 項；卡片右側淡色圖示' },
+      { id: 3, action: '點選訓練項目', note: '進入該動作復健頁（無列表箭頭，整卡可點）' },
       { id: 4, action: '按「開始訓練」→ 相機啟動', note: '請求相機權限' },
       { id: 5, action: 'AI 偵測姿態 → 繪製骨架', note: 'TF.js 30fps 偵測' },
       { id: 6, action: '即時顯示關節角度', note: '大字體數字 + 顏色指示' },
-      { id: 7, action: '語音提示是否達到目標角度', note: 'zh-TW TTS，節流 3秒' },
+      { id: 7, action: '語音提示是否達到目標角度', note: '僅繁體中文（zh-TW）TTS；節流約 3 秒；已移除閩南語切換' },
       { id: 8, action: '達標 → 保持倒數計時', note: '綠色高亮 + 倒計時' },
       { id: 9, action: '完成組數次數 → 顯示成績', note: '訓練完成動畫' },
       { id: 10, action: '返回主頁查看進度', note: '更新今日完成狀態' },
@@ -116,7 +117,7 @@ const userFlows = [
     steps: [
       { id: 1, action: '選擇「醫師端」登入', note: '顯示管理患者列表' },
       { id: 2, action: '查看患者完成率儀表板', note: '多患者對比圖表' },
-      { id: 3, action: '選擇患者 → ���看詳情', note: '患者個別訓練數據' },
+      { id: 3, action: '選擇患者 → 查看詳情', note: '患者個別訓練數據' },
       { id: 4, action: '查看角度進展與達標率', note: '科學化評估報告' },
       { id: 5, action: '調整訓練處方', note: '修改目標角度/組數/次數' },
       { id: 6, action: '儲存 → 即時同步至患者端', note: '變更立即生效' },
@@ -137,7 +138,7 @@ const designTokens = {
     { name: 'Error', hex: '#C62828', desc: '未達標 · 錯誤 · 警告' },
     { name: 'Background', hex: '#EEF2F7', desc: '頁面背景 — 柔和灰藍' },
     { name: 'Surface', hex: '#FFFFFF', desc: '卡片 · 內容區塊' },
-    { name: 'Dark BG', hex: '#0D1B2A', desc: '復健訓練頁��間背景' },
+    { name: 'Dark BG', hex: '#111D2D', desc: '復健訓練頁暗色背景（#111D2D／#1A2840 導航列）' },
     { name: 'Skeleton', hex: '#00E5FF', desc: '骨架節點連線顏色' },
     { name: 'Joint Highlight', hex: '#FFD600', desc: '高亮關節節點' },
     { name: 'Angle Active', hex: '#69F0AE', desc: '達標角度指示色' },
@@ -172,13 +173,19 @@ const mlKitDesign = {
     { step: 5, name: '角度計算', detail: '三點向量夾角：acos(v1·v2 / |v1||v2|) × 180/π' },
     { step: 6, name: '狀態判斷', detail: '比較目前角度與目標角度，加入容許誤差帶' },
     { step: 7, name: '骨架繪製', detail: 'Canvas 2D API，關節圓圈 + 連線，高亮運動關節' },
-    { step: 8, name: '語音反饋', detail: 'SpeechSynthesisUtterance(zh-TW)，節流 3500ms' },
+    { step: 8, name: '語音反饋', detail: 'SpeechSynthesisUtterance(zh-TW)，節流 3000ms（RehabSession）' },
   ],
   exercises: [
-    { name: '膝蓋彎曲', joints: 'right_hip → right_knee → right_ankle', target: '120°' },
-    { name: '肩膀外展', joints: 'right_hip → right_shoulder → right_elbow', target: '90°' },
-    { name: '手肘彎曲', joints: 'right_shoulder → right_elbow → right_wrist', target: '90°' },
-    { name: '髖關節外展', joints: 'left_knee → left_hip → right_hip', target: '30°' },
+    { name: '膝蓋彎曲訓練', joints: '[23,25,27]', target: '例 110°' },
+    { name: '膝蓋伸膝訓練', joints: '[23,25,27]', target: '例 165°' },
+    { name: '肩膀外展訓練', joints: '[23,11,13]', target: '例 90°' },
+    { name: '肩膀前舉訓練', joints: '[23,11,13]', target: '例 95°' },
+    { name: '手肘彎曲訓練', joints: '[11,13,15]', target: '例 130°' },
+    { name: '手肘伸展訓練', joints: '[11,13,15]', target: '例 160–165°' },
+    { name: '髖關節外展訓練', joints: '[24,23,25]', target: '例 35°' },
+    { name: '直腿抬舉訓練', joints: '[11,23,25]', target: '例 45°' },
+    { name: '側面抬腿訓練', joints: '[23,24,26]', target: '例 30°' },
+    { name: '靠牆深蹲訓練', joints: '[23,25,27]', target: '例 90–100°' },
   ],
 };
 
@@ -217,20 +224,25 @@ export default function Blueprint() {
 
   return (
     <div className="min-h-screen" style={{ background: '#F4F7FC' }}>
-      {/* Top Bar */}
-      <div style={{ background: 'linear-gradient(135deg, #FF7043 0%, #F4511E 100%)', paddingBottom: 24 }}>
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
-          <button onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/75 hover:text-white transition-colors">
-            <ArrowLeft size={20} />
-            <span style={{ fontSize: 15 }}>返回</span>
-          </button>
-        </div>
-        <div className="px-6 pt-2 pb-4">
-          <h1 style={{ color: 'white', fontSize: 24, fontWeight: 700 }}>系統開發藍圖</h1>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, marginTop: 3 }}>
-            RehabBridge v1.0 · 架構 · 流程 · UI · ML
-          </p>
+      {/* Top Bar（返回鈕與家屬端一致：圓框大字 + 不換行） */}
+      <div style={{ background: 'linear-gradient(135deg, #FF7043 0%, #F4511E 100%)' }}>
+        <div className="pt-8 pb-6 px-8">
+          <div className="max-w-7xl mx-auto">
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex flex-nowrap items-center gap-2.5 text-white/85 hover:text-white mb-4 transition-colors text-2xl md:text-3xl font-bold min-h-[52px] w-fit rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-5 py-2.5 active:scale-[0.98] -ml-1"
+              >
+                <ArrowLeft size={30} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                <span className="whitespace-nowrap">返回</span>
+              </button>
+              <h1 className="text-white text-2xl md:text-4xl font-bold">系統開發藍圖</h1>
+              <p className="text-white/65 text-sm md:text-base mt-2">
+                RehabBridge v1.1 · 2026-03 · 架構 · 流程 · UI · ML（與目前程式對齊）
+              </p>
+            </motion.div>
+          </div>
         </div>
       </div>
 
@@ -260,8 +272,9 @@ export default function Blueprint() {
             <div className="rounded-2xl p-4 mb-5 shadow-sm" style={{ background: 'white' }}>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 8 }}>分層架構總覽</h2>
               <p style={{ fontSize: 13, color: '#546E7A', lineHeight: 1.6 }}>
-                RehabBridge 採用四層清晰分層架構，確保關注點分離、可測試性與可維護性。
-                前端技術棧：React + TypeScript + TailwindCSS，ML 推理：TF.js MoveNet，語音：Web Speech API。
+                RehabBridge 採用四層分層架構，關注點分離、利於維護。技術棧：React + TypeScript + TailwindCSS；
+                姿態：TF.js MoveNet；語音：Web Speech API，僅繁體中文（zh-TW）。長者端今日計畫依分類與
+                bodyArea 排序；完成訓練會寫入 sessionStore（localStorage）與 mock 紀錄合併顯示。
               </p>
             </div>
 
@@ -321,6 +334,7 @@ export default function Blueprint() {
                   { from: 'Angle Status', to: 'Voice Coach (SpeechSynthesis)', arrow: true },
                   { from: 'Angle Status', to: 'Canvas Skeleton Overlay', arrow: true },
                   { from: 'Angle Status', to: 'AngleGauge UI Component', arrow: true },
+                  { from: '訓練完成', to: 'appendSessionRecord → localStorage', arrow: true },
                 ].map((step, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="px-3 py-1.5 rounded-lg text-xs font-semibold"
@@ -426,6 +440,24 @@ export default function Blueprint() {
                   <div style={{ fontSize: 13, fontWeight: 600, color: '#2E7D32' }}>♿ 無障礙對比度</div>
                   <div style={{ fontSize: 12, color: '#1B5E20', marginTop: 4 }}>{designTokens.contrast}</div>
                 </div>
+              </div>
+            </AccordionSection>
+
+            <AccordionSection title="🗓 長者端 · 今日訓練計畫卡片" defaultOpen>
+              <div className="mt-2 flex flex-col gap-3">
+                {[
+                  { title: '排序邏輯', detail: '僅 active 處方；先依 category／bodyArea 排序後，下肢＋核心取前 2 項（腿）、上肢取前 2 項（手），列為腿區再手區' },
+                  { title: '卡片版面', detail: '左：播放圖示方塊 + 動作名稱；右側半透明大圖示（依分類 💪🦵🧘）垂直置中；列表不顯示右箭頭，整卡可點進 RehabSession' },
+                  { title: '主頁字級', detail: 'PatientPortal 使用 Tailwind arbitrary variant 整頁放大（text-xs→text-lg 等）以利長者閱讀' },
+                ].map((item) => (
+                  <div key={item.title} className="flex items-start gap-3 py-2"
+                    style={{ borderBottom: '1px solid #F8F8F8' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1A2035', width: 100, flexShrink: 0 }}>
+                      {item.title}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#546E7A', lineHeight: 1.5 }}>{item.detail}</div>
+                  </div>
+                ))}
               </div>
             </AccordionSection>
 

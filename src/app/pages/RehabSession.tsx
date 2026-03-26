@@ -14,7 +14,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { usePoseDetection } from '../hooks/usePoseDetection';
 import { useVoiceCoach } from '../hooks/useVoiceCoach';
-import { useTaigiTranslator } from '../hooks/useTaigiTranslator';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
 import {
@@ -30,8 +29,6 @@ import { appendSessionRecord } from '../data/sessionStore';
 const PATIENT_ID = 'P001';
 /** 患者端：inline style 字級統一放大（約 +22%） */
 const patientPx = (px: number) => Math.round(px * 1.22);
-type VoiceLocale = 'zh-TW' | 'nan-TW';
-
 export default function RehabSession() {
   const navigate = useNavigate();
   const { exerciseId } = useParams<{ exerciseId: string }>();
@@ -42,7 +39,6 @@ export default function RehabSession() {
 
   const [isActive, setIsActive] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [voiceLocale, setVoiceLocale] = useState<VoiceLocale>('zh-TW');
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
@@ -89,11 +85,10 @@ export default function RehabSession() {
   // Voice coach hook
   const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
     throttleMs: 3000,
-    lang: voiceLocale,
-    rate: voiceLocale === 'nan-TW' ? 0.82 : 0.9,
-    pitch: voiceLocale === 'nan-TW' ? 0.95 : 1.0,
+    lang: 'zh-TW',
+    rate: 0.9,
+    pitch: 1.0,
   });
-  const { translateToTaigi, taigiModelEnabled } = useTaigiTranslator();
 
   const goalBriefItems = [
     `今天做「${exercise?.name ?? '本次動作'}」`,
@@ -107,49 +102,10 @@ export default function RehabSession() {
   }, [goalBriefItems]);
 
   const speakGoalBrief = useCallback(() => {
-    const zhText = buildGoalBriefText();
-    if (voiceLocale === 'zh-TW') {
-      speak(zhText, true, 'zh-TW');
-      return;
-    }
+    speak(buildGoalBriefText(), true, 'zh-TW');
+  }, [buildGoalBriefText, speak]);
 
-    const taigiFallback = '先聽今仔日目標。這擺動作、目標角度、組數佮次數攏講予你聽。準備好才開始偵測。';
-    if (!taigiModelEnabled) {
-      speak(taigiFallback, true, 'nan-TW');
-      return;
-    }
-
-    void translateToTaigi(zhText)
-      .then((modelText) => speak(modelText || taigiFallback, true, 'nan-TW'))
-      .catch(() => speak(taigiFallback, true, 'nan-TW'));
-  }, [buildGoalBriefText, speak, taigiModelEnabled, translateToTaigi, voiceLocale]);
-
-  const getVoiceTextByLocale = useCallback((locale: VoiceLocale, key: string, n?: number) => {
-    if (locale === 'nan-TW') {
-      switch (key) {
-        case 'start':
-          return '請開始做動作，慢慢來。';
-        case 'achieved':
-          return '有到位，保持咧。';
-        case 'complete':
-          return '恭喜你，全部攏完成矣。';
-        case 'setComplete':
-          return `第 ${n ?? 1} 組完成，先歇一下。`;
-        case 'repComplete':
-          return `第 ${n ?? 1} 擺，足好。`;
-        case 'tooLow':
-          return '閣較懸一點。';
-        case 'tooHigh':
-          return '有較超過，放輕鬆。';
-        case 'paused':
-          return '先暫停，歇一下。';
-        case 'resume':
-          return '好，繼續做。';
-        default:
-          return '';
-      }
-    }
-
+  const getVoiceText = useCallback((key: string, n?: number) => {
     switch (key) {
       case 'start':
         return exercise?.voicePrompts.start ?? '請開始動作';
@@ -177,29 +133,10 @@ export default function RehabSession() {
   const speakLocalized = useCallback(
     (key: string, force = false, n?: number) => {
       voiceFeedbackCountRef.current += 1;
-      if (voiceLocale === 'zh-TW') {
-        const zhText = getVoiceTextByLocale('zh-TW', key, n);
-        speak(zhText, force, 'zh-TW');
-        return;
-      }
-
-      const zhSourceText = getVoiceTextByLocale('zh-TW', key, n);
-      const taigiFallbackText = getVoiceTextByLocale('nan-TW', key, n);
-
-      if (!taigiModelEnabled) {
-        speak(taigiFallbackText, force, 'nan-TW');
-        return;
-      }
-
-      void translateToTaigi(zhSourceText)
-        .then((modelText) => {
-          speak(modelText || taigiFallbackText, force, 'nan-TW');
-        })
-        .catch(() => {
-          speak(taigiFallbackText, force, 'nan-TW');
-        });
+      const zhText = getVoiceText(key, n);
+      speak(zhText, force, 'zh-TW');
     },
-    [getVoiceTextByLocale, speak, taigiModelEnabled, translateToTaigi, voiceLocale]
+    [getVoiceText, speak]
   );
 
   // Toggle voice
@@ -621,32 +558,6 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setVoiceLocale(prev => (prev === 'zh-TW' ? 'nan-TW' : 'zh-TW'))}
-            className="px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
-            style={{
-              color: 'rgba(255,255,255,0.88)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              fontSize: patientPx(12),
-              fontWeight: 700
-            }}
-            title="切換語音語言"
-          >
-            {voiceLocale === 'zh-TW' ? '中文' : '閩南語'}
-          </button>
-          {voiceLocale === 'nan-TW' && (
-            <div
-              className="px-2 py-1 rounded-lg"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                color: 'rgba(255,255,255,0.72)',
-                fontSize: patientPx(10),
-                fontWeight: 700,
-              }}
-            >
-              {taigiModelEnabled ? '台語模型+語料調校' : '台語內建'}
-            </div>
-          )}
           {/* FPS indicator */}
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>

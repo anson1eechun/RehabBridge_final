@@ -4,7 +4,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Activity, CheckCircle, Clock, Award, ChevronRight,
+  Activity, CheckCircle, Clock, Award,
   ArrowLeft, Bell, Calendar, Flame, Target, Play, X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -38,7 +38,7 @@ export default function PatientPortal() {
     { id: 3, title: '家屬關懷', body: '小美：爸，記得要做今天的復健喔！', time: '昨天' },
     { id: 4, title: '訓練提醒', body: '晚餐後是您習慣的第二次訓練時段，先做 3 分鐘暖身再開始。', time: '30 分鐘前' },
     { id: 5, title: '回診提醒', body: '下週三 10:30 與陳醫師視訊回診，請預留約 20 分鐘並準備好平板。', time: '昨天 18:00' },
-    { id: 6, title: '語音教練更新', body: '台語語音說明已更新，進入動作頁可按「說明」重聽要點。', time: '2 天前' },
+    { id: 6, title: '語音教練更新', body: '中文語音提示已優化，進入動作頁可按「說明」重聽要點。', time: '2 天前' },
     { id: 7, title: '本週小結', body: '本週您完成訓練 12 次，平均得分 84 分，比上週進步 3 分。', time: '3 天前' },
     { id: 8, title: '安全小叮嚀', body: '訓練時請穿防滑鞋、地面保持乾燥；若頭暈請先坐下休息。', time: '4 天前' },
     { id: 9, title: '成就解鎖', body: '恭喜獲得「一週全勤」徽章，繼續保持！', time: '上週日' },
@@ -47,7 +47,7 @@ export default function PatientPortal() {
     { id: 12, title: '處方微調', body: '髖關節外展目標角度已調整為 35°，請依畫面提示練習。', time: '上週三' },
   ];
 
-  const prescriptions = mockPrescriptions.filter(p => p.patientId === PATIENT.id);
+  const prescriptions = mockPrescriptions.filter((p) => p.patientId === PATIENT.id && p.active);
   const exercises = mockExercises.map((exercise) => {
     const matchedRx = prescriptions.find((rx) => rx.exerciseId === exercise.id);
     return {
@@ -66,43 +66,39 @@ export default function PatientPortal() {
     上肢: 1,
     核心: 2,
   };
-  const sortedExercises = [...exercises].sort((a, b) => {
-    const aOrder = categoryOrder[a.exercise.category] ?? 99;
-    const bOrder = categoryOrder[b.exercise.category] ?? 99;
-    if (aOrder !== bOrder) return aOrder - bOrder;
+  /** 同一大類內依訓練部位（bodyArea）排序：膝→大腿→髖→全身；上肢手肘→肩膀 */
+  const bodyAreaOrder: Record<string, number> = {
+    膝蓋: 0,
+    大腿: 1,
+    髖部: 2,
+    全身: 3,
+    手肘: 0,
+    肩膀: 1,
+  };
+  /** 今日計畫只納入「目前有處方」的動作，不把整本動作庫都放上主頁 */
+  const prescribedOnly = exercises.filter((item) => item.source === 'prescription');
+  const planPool = prescribedOnly.length > 0 ? prescribedOnly : exercises;
+
+  const sortedExercises = [...planPool].sort((a, b) => {
+    const aCat = categoryOrder[a.exercise.category] ?? 99;
+    const bCat = categoryOrder[b.exercise.category] ?? 99;
+    if (aCat !== bCat) return aCat - bCat;
+    const aArea = bodyAreaOrder[a.exercise.bodyArea] ?? 50;
+    const bArea = bodyAreaOrder[b.exercise.bodyArea] ?? 50;
+    if (aArea !== bArea) return aArea - bArea;
     return a.exercise.name.localeCompare(b.exercise.name, 'zh-Hant');
   });
 
-  // 今日計畫固定最多 6 項，且「下肢、上肢、核心」只要有處方／目錄項目就各至少出現 1 個，其餘名額輪流補滿。
-  // 顯示順序仍為：下肢整段 → 上肢整段 → 核心整段。
-  const lowerLimb = sortedExercises.filter((item) => item.exercise.category === '下肢');
-  const upperLimb = sortedExercises.filter((item) => item.exercise.category === '上肢');
-  const coreLimb = sortedExercises.filter((item) => item.exercise.category === '核心');
-  const DISPLAY_PLAN_COUNT = 6;
-  const limbBuckets = [
-    { items: lowerLimb },
-    { items: upperLimb },
-    { items: coreLimb },
-  ].filter((b) => b.items.length > 0);
-
-  const picked: typeof sortedExercises = [];
-  const bucketIdx = limbBuckets.map(() => 0);
-  while (picked.length < DISPLAY_PLAN_COUNT) {
-    let progressed = false;
-    for (let b = 0; b < limbBuckets.length && picked.length < DISPLAY_PLAN_COUNT; b++) {
-      const i = bucketIdx[b];
-      if (i < limbBuckets[b].items.length) {
-        picked.push(limbBuckets[b].items[i]);
-        bucketIdx[b]++;
-        progressed = true;
-      }
-    }
-    if (!progressed) break;
-  }
-  const displayExercises = [
-    ...picked.filter((item) => item.exercise.category === '下肢'),
-    ...picked.filter((item) => item.exercise.category === '上肢'),
-    ...picked.filter((item) => item.exercise.category === '核心'),
+  // 在處方範圍內：腿部（下肢＋核心）最多 2 項、手部（上肢）最多 2 項；先腿後手。
+  const MAX_LEG = 2;
+  const MAX_ARM = 2;
+  const legPool = sortedExercises.filter(
+    (item) => item.exercise.category === '下肢' || item.exercise.category === '核心'
+  );
+  const armPool = sortedExercises.filter((item) => item.exercise.category === '上肢');
+  const displayExercises: typeof sortedExercises = [
+    ...legPool.slice(0, MAX_LEG),
+    ...armPool.slice(0, MAX_ARM),
   ];
   const displayExerciseOrder = new Map(
     displayExercises.map((item, index) => [item.exercise.id, index])
@@ -195,11 +191,18 @@ export default function PatientPortal() {
       <div className="bg-gradient-to-r from-blue-600 to-blue-800 pt-8 pb-16 px-8">
         <div className="max-w-7xl mx-auto flex justify-between items-start">
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-            <button onClick={() => navigate('/')} className="flex items-center gap-2 text-white/70 hover:text-white mb-4 transition-colors">
-              <ArrowLeft size={18} /> <span>返回</span>
+            <button
+              type="button"
+              onClick={() => navigate('/')}
+              className="flex items-center gap-3 text-white/85 hover:text-white mb-4 transition-colors text-3xl md:text-4xl font-bold min-h-[56px] min-w-[140px] -ml-1 rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-6 py-3 active:scale-[0.98]"
+            >
+              <ArrowLeft size={36} strokeWidth={2.5} className="shrink-0" aria-hidden />
+              <span>返回</span>
             </button>
-            <p className="text-blue-100 text-lg">{greeting}，</p>
-            <h1 className="text-white text-4xl font-bold mt-1">{PATIENT.name}</h1>
+            <h1 className="text-white text-4xl md:text-5xl font-bold leading-tight">
+              <span className="text-blue-100 font-semibold">{greeting}，</span>
+              {PATIENT.name}
+            </h1>
           </motion.div>
           
           <button 
@@ -272,7 +275,7 @@ export default function PatientPortal() {
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => navigate(`/patient/rehab/${ex.id}`)}
-                      className={`relative overflow-hidden p-5 sm:p-6 min-h-[11.5rem] sm:min-h-[12.5rem] md:min-h-52 rounded-2xl text-left transition-all shadow-md border ${
+                      className={`relative flex flex-col overflow-hidden p-5 sm:p-6 min-h-[11.5rem] sm:min-h-[12.5rem] md:min-h-52 rounded-2xl text-left transition-all shadow-md border ${
                         isDone ? 'bg-green-50 border-green-100' : 'bg-white border-gray-100'
                       }`}
                     >
@@ -280,13 +283,14 @@ export default function PatientPortal() {
                         <>
                           <div className={`absolute inset-0 bg-gradient-to-br ${theme.bg}`} />
                           <div
-                            className="pointer-events-none absolute -right-2 -bottom-3 leading-[0.85] opacity-[0.24] select-none text-[6.25rem] sm:text-[7.5rem] md:text-[9rem]"
+                            className="pointer-events-none absolute right-1 sm:right-2 top-1/2 z-0 -translate-y-1/2 leading-[0.85] opacity-[0.24] select-none text-[6.25rem] sm:text-[7.5rem] md:text-[9rem]"
+                            aria-hidden
                           >
                             {theme.mark}
                           </div>
                         </>
                       )}
-                      <div className="relative flex items-center gap-3 sm:gap-4 h-full min-h-[3.5rem]">
+                      <div className="relative z-10 flex flex-1 items-center gap-3 sm:gap-4 min-h-[3.5rem]">
                         <div
                           className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl shrink-0 flex items-center justify-center shadow-sm border ${
                             isDone ? 'bg-white border-green-100' : 'bg-white border-blue-100'
@@ -301,7 +305,6 @@ export default function PatientPortal() {
                         <p className="font-bold text-gray-800 text-[1.46rem] sm:text-[1.625rem] md:text-[1.95rem] leading-tight flex-1 min-w-0">
                           {ex.name}
                         </p>
-                        <ChevronRight className="text-gray-400 shrink-0" size={28} strokeWidth={2.25} />
                       </div>
                     </motion.button>
                   );

@@ -177,32 +177,35 @@ export default function DoctorPortal() {
         )}
       </AnimatePresence>
 
-      {/* Top Bar */}
-      <div style={{ background: 'linear-gradient(135deg, #7E57C2 0%, #5E35B1 100%)', paddingBottom: 28 }}>
-        <div className="flex items-center justify-between px-6 pt-6 pb-2">
-          <button onClick={() => navigate('/')}
-            className="flex items-center gap-2 text-white/70 hover:text-white transition-colors">
-            <ArrowLeft size={20} />
-            <span style={{ fontSize: 15 }}>返回</span>
-          </button>
-        </div>
+      {/* Top Bar（頂部與家屬端：圓框返回鈕 + 單行標題） */}
+      <div style={{ background: 'linear-gradient(135deg, #7E57C2 0%, #5E35B1 100%)' }}>
+        <div className="pt-8 pb-6 px-8">
+          <div className="max-w-7xl mx-auto">
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex flex-nowrap items-center gap-2.5 text-white/85 hover:text-white mb-4 transition-colors text-2xl md:text-3xl font-bold min-h-[52px] w-fit rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-5 py-2.5 active:scale-[0.98] -ml-1"
+              >
+                <ArrowLeft size={30} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                <span className="whitespace-nowrap">返回</span>
+              </button>
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white backdrop-blur-md border border-white/30 bg-white/20 shrink-0">
+                  <Stethoscope size={28} className="text-white" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  <h1 className="text-white text-2xl md:text-3xl font-bold leading-tight whitespace-nowrap">
+                    <span className="text-white/65 font-semibold">復健科主治醫師</span>
+                    {' '}
+                    Dr. {DOCTOR.name}
+                  </h1>
+                </div>
+              </div>
+            </motion.div>
 
-        <div className="px-6 pt-2 pb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(255,255,255,0.18)' }}>
-              <Stethoscope size={24} className="text-white" />
-            </div>
-            <div>
-              <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: 14 }}>復健科主治醫師</p>
-              <h1 style={{ color: 'white', fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>
-                Dr. {DOCTOR.name}
-              </h1>
-            </div>
-          </div>
-
-          {/* System Stats */}
-          <div className="grid grid-cols-4 gap-3">
+            {/* System Stats */}
+            <div className="grid grid-cols-4 gap-3 mt-6">
             {[
               { label: '管理患者', value: patients.length, suffix: '位' },
               { label: '平均完成率', value: Math.round(mockSystemStats.avgCompletionRate), suffix: '%' },
@@ -217,6 +220,7 @@ export default function DoctorPortal() {
                 <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{stat.label}</div>
               </div>
             ))}
+            </div>
           </div>
         </div>
       </div>
