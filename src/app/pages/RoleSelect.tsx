@@ -84,9 +84,9 @@ export default function RoleSelect() {
           {/* Logo 容器 */}
           <div className="w-20 h-20 md:w-24 md:h-24 rounded-[24px] flex items-center justify-center overflow-hidden">
             <img
-              src="/home-icon.png"
-              alt="RehabBridge logo"
-              className="w-full h-full object-contain object-center"
+              src="/rehab-home-logo.png"
+              alt="RehabBridge 盾牌標誌：防護與復健意象"
+              className="w-full h-full object-contain object-center drop-shadow-sm"
               loading="eager"
               decoding="async"
             />
