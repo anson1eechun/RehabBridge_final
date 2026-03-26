@@ -1,8 +1,8 @@
 // ============================================================
 // PatientPortal — 長者端主頁 (專業雙欄固定版)
 // ============================================================
-import React, { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import {
   Activity, CheckCircle, Clock, Award,
   ArrowLeft, Bell, Calendar, Flame, Target, Play, X
@@ -27,6 +27,7 @@ const PATIENT = mockPatients[0]; // 王大明
 
 export default function PatientPortal() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const sessionRecords = useSessionRecords();
   const [planVoiceDialect, setPlanVoiceDialect] = useState<VoiceDialectPreference>(() =>
@@ -36,6 +37,22 @@ export default function PatientPortal() {
     setPlanVoiceDialect(d);
     writeVoiceDialectPreference(d);
     window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+  }, []);
+
+  /** 從復健頁返回或從其他分頁同步 localStorage 時，國／台語按鈕與首頁狀態一致 */
+  useEffect(() => {
+    if (location.pathname !== '/patient') return;
+    setPlanVoiceDialect(readVoiceDialectPreference());
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const sync = () => setPlanVoiceDialect(readVoiceDialectPreference());
+    window.addEventListener('rehab-voice-dialect-change', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('rehab-voice-dialect-change', sync);
+      window.removeEventListener('storage', sync);
+    };
   }, []);
 
   const [greeting] = useState(() => {

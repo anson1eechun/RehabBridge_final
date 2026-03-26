@@ -19,6 +19,7 @@ import {
   isYatingConfigured,
   wantsYatingFromEnv,
   resolveYatingVoiceModelForExercise,
+  YATING_DEFAULT_TAIWANESE_MODEL,
 } from '../services/yatingTts';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
@@ -99,15 +100,17 @@ export default function RehabSession() {
   const ttsProvider =
     wantsYating && yatingReady ? 'yating' : wantsOpenAi && openAiReady ? 'openai' : 'browser';
 
-  const canPickVoiceDialect = ttsProvider === 'yating' && Boolean(exercise?.voicePromptsTai);
+  /** 該動作是否另有台語陪練稿（無則選台語時仍用台語聲線唸國語稿） */
+  const hasTaiPromptsForExercise = Boolean(exercise?.voicePromptsTai);
 
+  /** 與長者首頁國／台語連動：選台語且走雅婷時，每個動作都用 tai_*，不限於膝蓋彎曲 */
   const yatingVoiceModel = useMemo(() => {
     if (ttsProvider !== 'yating') return undefined;
-    if (canPickVoiceDialect && voiceDialect === 'taiwanese') {
-      return resolveYatingVoiceModelForExercise(exercise) ?? 'tai_female_1';
+    if (voiceDialect === 'taiwanese') {
+      return resolveYatingVoiceModelForExercise(exercise) ?? YATING_DEFAULT_TAIWANESE_MODEL;
     }
     return (import.meta.env.VITE_YATING_VOICE_MODEL ?? 'zh_en_female_2').trim();
-  }, [ttsProvider, canPickVoiceDialect, voiceDialect, exercise]);
+  }, [ttsProvider, voiceDialect, exercise]);
 
   // 本機再略慢、少尖聲；國語／台語由 voiceDialect 決定雅婷聲線（zh_en_* vs tai_*）
   const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
@@ -170,7 +173,7 @@ export default function RehabSession() {
   const getVoiceText = useCallback(
     (key: string, n?: number) => {
       const tai = exercise?.voicePromptsTai;
-      const useTai = canPickVoiceDialect && voiceDialect === 'taiwanese' && tai;
+      const useTai = voiceDialect === 'taiwanese' && tai != null;
       switch (key) {
         case 'start':
           return (useTai ? tai.start : exercise?.voicePrompts.start) ?? '好，動起來';
@@ -185,7 +188,7 @@ export default function RehabSession() {
         case 'repComplete':
           return useTai ? `第${n ?? 1}下有了啦` : `第${n ?? 1}下有了`;
         case 'tooLow':
-          return (useTai ? tai.tooLow : exercise?.voicePrompts.tooLow) ?? '還差一點，再開一點沒關係';
+          return (useTai ? tai!.tooLow : exercise?.voicePrompts.tooLow) ?? '還差一點，再開一點沒關係';
         case 'tooHigh':
           return useTai
             ? (exercise?.voicePromptsTai?.tooHigh ?? '收一屑啦，莫硬拚')
@@ -198,7 +201,7 @@ export default function RehabSession() {
           return '';
       }
     },
-    [exercise, canPickVoiceDialect, voiceDialect]
+    [exercise, voiceDialect]
   );
 
   const speakLocalized = useCallback(
@@ -280,6 +283,17 @@ export default function RehabSession() {
     setSessionStarted(false);
     setIsActive(false);
   }, [exerciseId]);
+
+  /** 與首頁國／台語按鈕連動（同頁事件、他分頁 localStorage） */
+  useEffect(() => {
+    const sync = () => setVoiceDialect(readVoiceDialectPreference());
+    window.addEventListener('rehab-voice-dialect-change', sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('rehab-voice-dialect-change', sync);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
 
   const [displayAngle, setDisplayAngle] = useState(0);
   const displayAngleRef = useRef(0);
@@ -658,9 +672,11 @@ export default function RehabSession() {
             }}
             title={
               ttsProvider === 'yating'
-                ? canPickVoiceDialect
-                  ? '雅婷：國語／台語在長者首頁選；此處僅依該設定（zh_en_*／tai_*）'
-                  : '雅婷 TTS：國語用 zh_en_*（VITE_YATING_VOICE_MODEL）；語速／音高 VITE_YATING_SPEED 等'
+                ? voiceDialect === 'taiwanese'
+                  ? hasTaiPromptsForExercise
+                    ? '雅婷台語聲線；此動作有台語陪練稿（長者首頁選台語）'
+                    : '雅婷台語聲線；此動作尚無台語稿，陪練句仍為國語文案（長者首頁選台語）'
+                  : '雅婷國語聲線 zh_en_*（VITE_YATING_VOICE_MODEL）；語速等見 .env'
                 : ttsProvider === 'openai'
                   ? 'OpenAI gpt-4o-mini-tts；可用 VITE_OPENAI_TTS_VOICE、VITE_OPENAI_TTS_INSTRUCTIONS、VITE_OPENAI_TTS_SPEED 微調'
                   : wantsYating && !yatingReady
