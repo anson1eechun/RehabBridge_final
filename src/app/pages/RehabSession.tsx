@@ -5,7 +5,7 @@
 // Doctor-prescribed target angle comparison
 // ============================================================
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft, Volume2, VolumeX, Play, Pause,
@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { usePoseDetection } from '../hooks/usePoseDetection';
 import { useVoiceCoach } from '../hooks/useVoiceCoach';
+import { useTaigiTranslator } from '../hooks/useTaigiTranslator';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
 import {
@@ -24,8 +25,10 @@ import {
   type JointRef,
 } from '../utils/angleCalculator';
 import { mockExercises, mockPrescriptions } from '../data/mockData';
+import { appendSessionRecord } from '../data/sessionStore';
 
 const PATIENT_ID = 'P001';
+type VoiceLocale = 'zh-TW' | 'nan-TW';
 
 export default function RehabSession() {
   const navigate = useNavigate();
@@ -37,6 +40,7 @@ export default function RehabSession() {
 
   const [isActive, setIsActive] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceLocale, setVoiceLocale] = useState<VoiceLocale>('zh-TW');
   const [sessionStarted, setSessionStarted] = useState(false);
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
@@ -48,9 +52,13 @@ export default function RehabSession() {
   const [sessionComplete, setSessionComplete] = useState(false);
   const [videoDimensions, setVideoDimensions] = useState({ width: 640, height: 480 });
 
-  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastFeedbackRef = useRef<string>('');
   const lastFeedbackTimeRef = useRef<number>(0);
+  const sessionStartRef = useRef<number | null>(null);
+  const angleStatsRef = useRef({ sum: 0, count: 0, max: 0 });
+  const sessionSavedRef = useRef(false);
+  const voiceFeedbackCountRef = useRef(0);
 
   // Resolve exercise + prescription
   const exercise = mockExercises.find(e => e.id === exerciseId);
@@ -76,7 +84,91 @@ export default function RehabSession() {
   );
 
   // Voice coach hook
-  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({ throttleMs: 3000 });
+  const { speak, setEnabled: setVoiceSetting } = useVoiceCoach({
+    throttleMs: 3000,
+    lang: voiceLocale,
+    rate: voiceLocale === 'nan-TW' ? 0.82 : 0.9,
+    pitch: voiceLocale === 'nan-TW' ? 0.95 : 1.0,
+  });
+  const { translateToTaigi, taigiModelEnabled } = useTaigiTranslator();
+
+  const getVoiceTextByLocale = useCallback((locale: VoiceLocale, key: string, n?: number) => {
+    if (locale === 'nan-TW') {
+      switch (key) {
+        case 'start':
+          return '請開始做動作，慢慢來。';
+        case 'achieved':
+          return '有到位，保持咧。';
+        case 'complete':
+          return '恭喜你，全部攏完成矣。';
+        case 'setComplete':
+          return `第 ${n ?? 1} 組完成，先歇一下。`;
+        case 'repComplete':
+          return `第 ${n ?? 1} 擺，足好。`;
+        case 'tooLow':
+          return '閣較懸一點。';
+        case 'tooHigh':
+          return '有較超過，放輕鬆。';
+        case 'paused':
+          return '先暫停，歇一下。';
+        case 'resume':
+          return '好，繼續做。';
+        default:
+          return '';
+      }
+    }
+
+    switch (key) {
+      case 'start':
+        return exercise?.voicePrompts.start ?? '請開始動作';
+      case 'achieved':
+        return exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持';
+      case 'complete':
+        return exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！';
+      case 'setComplete':
+        return `第 ${n ?? 1} 組完成，請休息一下`;
+      case 'repComplete':
+        return `第 ${n ?? 1} 次`;
+      case 'tooLow':
+        return exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度';
+      case 'tooHigh':
+        return (exercise?.voicePrompts as any)?.tooHigh ?? '請稍微放鬆一些';
+      case 'paused':
+        return '訓練已暫停';
+      case 'resume':
+        return '繼續訓練';
+      default:
+        return '';
+    }
+  }, [exercise]);
+
+  const speakLocalized = useCallback(
+    (key: string, force = false, n?: number) => {
+      voiceFeedbackCountRef.current += 1;
+      if (voiceLocale === 'zh-TW') {
+        const zhText = getVoiceTextByLocale('zh-TW', key, n);
+        speak(zhText, force, 'zh-TW');
+        return;
+      }
+
+      const zhSourceText = getVoiceTextByLocale('zh-TW', key, n);
+      const taigiFallbackText = getVoiceTextByLocale('nan-TW', key, n);
+
+      if (!taigiModelEnabled) {
+        speak(taigiFallbackText, force, 'nan-TW');
+        return;
+      }
+
+      void translateToTaigi(zhSourceText)
+        .then((modelText) => {
+          speak(modelText || taigiFallbackText, force, 'nan-TW');
+        })
+        .catch(() => {
+          speak(taigiFallbackText, force, 'nan-TW');
+        });
+    },
+    [getVoiceTextByLocale, speak, taigiModelEnabled, translateToTaigi, voiceLocale]
+  );
 
   // Toggle voice
   const toggleVoice = () => {
@@ -192,6 +284,13 @@ export default function RehabSession() {
   const uiAngleResult = getAngleResult(uiAngle, targetAngle, effectiveTolerance);
   const angleResult = getAngleResult(currentAngle, targetAngle, effectiveTolerance);
 
+  useEffect(() => {
+    if (!sessionStarted || !isActive || !hasValidAngle || sessionComplete) return;
+    angleStatsRef.current.sum += currentAngle;
+    angleStatsRef.current.count += 1;
+    angleStatsRef.current.max = Math.max(angleStatsRef.current.max, currentAngle);
+  }, [currentAngle, hasValidAngle, isActive, sessionStarted, sessionComplete]);
+
   // Lock viewport scrolling on this full-screen rehab page (iPad/PWA friendly).
   useEffect(() => {
     const html = document.documentElement;
@@ -247,7 +346,7 @@ export default function RehabSession() {
         setIsHolding(true);
         setHoldCountdown(effectiveHoldSeconds);
         if (!isThrottled || lastFeedbackRef.current !== 'achieved') {
-          speak(exercise?.voicePrompts.achieved ?? '很棒！已達到目標角度，請保持');
+          speakLocalized('achieved', false);
           setFeedbackMessage(`✅ 達到目標！保持 ${effectiveHoldSeconds} 秒`);
           setFeedbackType('success');
           lastFeedbackRef.current = 'achieved';
@@ -272,11 +371,11 @@ export default function RehabSession() {
                   if (nextSet > totalSets) {
                     setSessionComplete(true);
                     setIsActive(false);
-                    speak(exercise?.voicePrompts.complete ?? '恭喜！全部訓練完成！');
+                    speakLocalized('complete', false);
                     setFeedbackMessage('🎉 訓練完成！');
                     setFeedbackType('success');
                   } else {
-                    speak(`第 ${prevSet} 組完成，請休息一下`);
+                    speakLocalized('setComplete', false, prevSet);
                     setFeedbackMessage(`第 ${prevSet} 組完成，準備下一組`);
                     setFeedbackType('info');
                   }
@@ -284,7 +383,7 @@ export default function RehabSession() {
                 });
                 return 0;
               }
-              speak(`第 ${next} 次`);
+              speakLocalized('repComplete', false, next);
               setFeedbackMessage(`第 ${next} 次完成`);
               setFeedbackType('info');
               return next;
@@ -308,11 +407,11 @@ export default function RehabSession() {
 
       if (!isThrottled) {
         if (angleResult.status === 'below') {
-          speak(exercise?.voicePrompts.tooLow ?? '請繼續加大動作幅度');
+          speakLocalized('tooLow', false);
           setFeedbackMessage('📈 請繼續加大動作幅度');
           setFeedbackType('warning');
         } else if (angleResult.status === 'above') {
-          speak(exercise?.voicePrompts.tooHigh ?? '請稍微放鬆一些');
+          speakLocalized('tooHigh', false);
           setFeedbackMessage('📉 請稍微放鬆一些');
           setFeedbackType('warning');
         }
@@ -334,29 +433,60 @@ export default function RehabSession() {
     totalSets,
     targetAngle,
     exercise,
-    speak,
+    speakLocalized,
   ]);
+
+  useEffect(() => {
+    if (!sessionComplete || !exerciseId || sessionSavedRef.current) return;
+    const startedAt = sessionStartRef.current ?? Date.now();
+    const elapsedMinutes = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
+    const stats = angleStatsRef.current;
+    const avgAngle = stats.count > 0 ? Math.round(stats.sum / stats.count) : 0;
+    const maxAngle = Math.round(stats.max || 0);
+
+    const angleAccuracy = Math.max(0, 100 - Math.abs(targetAngle - avgAngle) * 2);
+    const score = Math.max(0, Math.min(100, Math.round(angleAccuracy * 0.8 + 20)));
+
+    appendSessionRecord({
+      patientId: PATIENT_ID,
+      exerciseId,
+      date: new Date().toISOString().split('T')[0],
+      duration: elapsedMinutes,
+      completedSets: totalSets,
+      completedReps: totalReps,
+      avgAngle,
+      maxAngle,
+      targetAngle,
+      score,
+      voiceFeedbackCount: voiceFeedbackCountRef.current,
+    });
+    sessionSavedRef.current = true;
+  }, [exerciseId, sessionComplete, targetAngle, totalReps, totalSets]);
 
   // Start session
   const handleStart = () => {
     setIsActive(true);
     setSessionStarted(true);
     setRepArmed(true);
+    sessionStartRef.current = Date.now();
+    angleStatsRef.current = { sum: 0, count: 0, max: 0 };
+    voiceFeedbackCountRef.current = 0;
+    sessionSavedRef.current = false;
     setFeedbackMessage(exercise?.voicePrompts.start ?? '請開始動作');
     setFeedbackType('info');
-    speak(exercise?.voicePrompts.start ?? '請開始動作');
+    speakLocalized('start', true);
   };
 
   const handlePause = () => {
     setIsActive(false);
-    speak('訓練已暫停');
+    speakLocalized('paused', true);
     setFeedbackMessage('訓練已暫停');
     setFeedbackType('info');
   };
 
   const handleResume = () => {
     setIsActive(true);
-    speak('繼續訓練');
+    speakLocalized('resume', true);
     setFeedbackMessage('繼續訓練');
     setFeedbackType('info');
   };
@@ -370,6 +500,10 @@ export default function RehabSession() {
     setRepArmed(true);
     setIsActive(true);
     setSessionStarted(true);
+    sessionStartRef.current = Date.now();
+    angleStatsRef.current = { sum: 0, count: 0, max: 0 };
+    voiceFeedbackCountRef.current = 0;
+    sessionSavedRef.current = false;
   };
 
   // Cleanup on unmount
@@ -406,10 +540,16 @@ export default function RehabSession() {
       <div className="flex items-center justify-between px-5 py-4" style={{ background: '#1A2840', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <button
           onClick={() => { setIsActive(false); navigate('/patient'); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-white/10 transition-colors"
-          style={{ color: 'rgba(255,255,255,0.7)', fontSize: 15 }}
+          className="flex items-center gap-2 px-5 py-3 rounded-2xl hover:bg-white/10 transition-colors"
+          style={{
+            color: 'rgba(255,255,255,0.8)',
+            fontSize: 16,
+            minHeight: 48,
+            minWidth: 96,
+            background: 'rgba(255,255,255,0.05)',
+          }}
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft size={20} />
           返回
         </button>
 
@@ -421,6 +561,32 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setVoiceLocale(prev => (prev === 'zh-TW' ? 'nan-TW' : 'zh-TW'))}
+            className="px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors"
+            style={{
+              color: 'rgba(255,255,255,0.88)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              fontSize: 12,
+              fontWeight: 700
+            }}
+            title="切換語音語言"
+          >
+            {voiceLocale === 'zh-TW' ? '中文' : '閩南語'}
+          </button>
+          {voiceLocale === 'nan-TW' && (
+            <div
+              className="px-2 py-1 rounded-lg"
+              style={{
+                background: 'rgba(255,255,255,0.08)',
+                color: 'rgba(255,255,255,0.72)',
+                fontSize: 10,
+                fontWeight: 700,
+              }}
+            >
+              {taigiModelEnabled ? '台語模型+語料調校' : '台語內建'}
+            </div>
+          )}
           {/* FPS indicator */}
           {status === 'detecting' && (
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg" style={{ background: 'rgba(102,187,106,0.2)' }}>

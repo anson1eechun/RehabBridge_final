@@ -10,8 +10,9 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import {
   mockPatients, mockPrescriptions, mockExercises,
-  mockSessionRecords, mockAngleProgress, mockWeeklyActivity
+  mockAngleProgress
 } from '../data/mockData';
+import { useSessionRecords, buildWeeklyActivityFromSessions } from '../data/sessionStore';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
   BarChart, Bar, CartesianGrid, LineChart, Line
@@ -22,6 +23,7 @@ const PATIENT = mockPatients[0]; // 王大明
 export default function PatientPortal() {
   const navigate = useNavigate();
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+  const sessionRecords = useSessionRecords();
 
   const [greeting] = useState(() => {
     const h = new Date().getHours();
@@ -37,20 +39,30 @@ export default function PatientPortal() {
   ];
 
   const prescriptions = mockPrescriptions.filter(p => p.patientId === PATIENT.id);
-  const exercises = prescriptions.map(rx => ({
-    ...rx,
-    exercise: mockExercises.find(e => e.id === rx.exerciseId)!,
-  }));
+  const exercises = mockExercises.map((exercise) => {
+    const matchedRx = prescriptions.find((rx) => rx.exerciseId === exercise.id);
+    return {
+      id: matchedRx?.id ?? `AUTO-${exercise.id}`,
+      exercise,
+      sets: matchedRx?.sets ?? exercise.sets,
+      reps: matchedRx?.reps ?? exercise.reps,
+      targetAngle: matchedRx?.targetAngle ?? exercise.targetAngle,
+      holdSeconds: matchedRx?.holdSeconds ?? exercise.holdSeconds,
+      frequency: matchedRx?.frequency ?? '每天一次',
+      source: matchedRx ? 'prescription' : 'catalog',
+    };
+  });
 
   const today = new Date().toISOString().split('T')[0];
-  const todaySessions = mockSessionRecords.filter(
+  const todaySessions = sessionRecords.filter(
     s => s.patientId === PATIENT.id && s.date === today
   );
 
   const completedToday = todaySessions.length;
   const totalToday = exercises.length;
   const streakDays = 7;
-  const patientSessions = mockSessionRecords.filter(s => s.patientId === PATIENT.id);
+  const patientSessions = sessionRecords.filter(s => s.patientId === PATIENT.id);
+  const weeklyActivity = buildWeeklyActivityFromSessions(patientSessions);
   const avgAngle = Math.round(
     patientSessions.reduce((sum, s) => sum + s.avgAngle, 0) / (patientSessions.length || 1)
   );
@@ -60,9 +72,9 @@ export default function PatientPortal() {
     patientSessions.reduce((sum, s) => sum + s.score, 0) / (patientSessions.length || 1)
   );
   const avgSessionMinutes = Math.round(totalMinutes / (patientSessions.length || 1));
-  const weeklySessions = mockWeeklyActivity.reduce((sum, day) => sum + day.sessions, 0);
+  const weeklySessions = weeklyActivity.reduce((sum, day) => sum + day.sessions, 0);
   const weeklyCompletionAvg = Math.round(
-    mockWeeklyActivity.reduce((sum, day) => sum + day.completion, 0) / (mockWeeklyActivity.length || 1)
+    weeklyActivity.reduce((sum, day) => sum + day.completion, 0) / (weeklyActivity.length || 1)
   );
   const recoveryConfidence = Math.min(
     99,
@@ -246,7 +258,7 @@ export default function PatientPortal() {
 
               <div className="h-48 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={mockWeeklyActivity}>
+                  <BarChart data={weeklyActivity}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
                     <YAxis hide />
@@ -259,7 +271,7 @@ export default function PatientPortal() {
 
               <div className="h-44 w-full mt-5">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={mockWeeklyActivity}>
+                  <LineChart data={weeklyActivity}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                     <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
                     <YAxis hide />

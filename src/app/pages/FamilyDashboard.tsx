@@ -13,9 +13,9 @@ import {
   ResponsiveContainer, CartesianGrid, ReferenceLine, LineChart, Line
 } from 'recharts';
 import {
-  mockPatients, mockSessionRecords, mockNotifications,
-  mockAngleProgress, mockWeeklyActivity
+  mockPatients, mockNotifications, mockAngleProgress
 } from '../data/mockData';
+import { useSessionRecords, buildWeeklyActivityFromSessions } from '../data/sessionStore';
 
 const PATIENT = mockPatients[0]; // 王大明
 const FAMILY_NAME = '王小美';
@@ -24,19 +24,20 @@ export default function FamilyDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'alerts'>('overview');
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
+  const sessionRecords = useSessionRecords();
 
   const unreadAlerts = mockNotifications.filter(n => !n.read).length;
-  const recentSessions = mockSessionRecords
-    .filter(s => s.patientId === PATIENT.id)
-    .slice(0, 5);
+  const patientSessions = sessionRecords.filter(s => s.patientId === PATIENT.id);
+  const weeklyActivity = buildWeeklyActivityFromSessions(patientSessions);
+  const recentSessions = patientSessions.slice(0, 5);
 
   const lastSession = recentSessions[0];
   const avgScore = Math.round(recentSessions.reduce((sum, s) => sum + s.score, 0) / (recentSessions.length || 1));
   const totalCareMinutes = recentSessions.reduce((sum, s) => sum + s.duration, 0);
   const weeklyCompletionAvg = Math.round(
-    mockWeeklyActivity.reduce((sum, d) => sum + d.completion, 0) / (mockWeeklyActivity.length || 1)
+    weeklyActivity.reduce((sum, d) => sum + d.completion, 0) / (weeklyActivity.length || 1)
   );
-  const weeklySessionCount = mockWeeklyActivity.reduce((sum, d) => sum + d.sessions, 0);
+  const weeklySessionCount = weeklyActivity.reduce((sum, d) => sum + d.sessions, 0);
   const careStability = Math.round((PATIENT.completionRate * 0.6) + (avgScore * 0.4));
 
   return (
@@ -184,7 +185,7 @@ export default function FamilyDashboard() {
                       </h3>
                       <div className="h-40 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={mockWeeklyActivity}>
+                          <BarChart data={weeklyActivity}>
                             <Bar dataKey="sessions" fill="#00897B" radius={[6, 6, 0, 0]} barSize={40} />
                             <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#94A3B8', fontSize: 12}} />
                             <Tooltip cursor={{fill: '#F8FAFB'}} contentStyle={{ borderRadius: '12px', border: 'none' }} />
@@ -214,7 +215,7 @@ export default function FamilyDashboard() {
 
                       <div className="h-44 w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={mockWeeklyActivity}>
+                          <LineChart data={weeklyActivity}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                             <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#94A3B8', fontSize: 12 }} />
                             <YAxis hide />

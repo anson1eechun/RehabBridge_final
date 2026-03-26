@@ -7,9 +7,12 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
 
   const initialMessages = useMemo(
     () =>
-      mockMessages.filter(
-        (msg) => msg.receiverId === currentUserId || msg.senderId === currentUserId
-      ),
+      mockMessages
+        .filter((msg) => msg.receiverId === currentUserId || msg.senderId === currentUserId)
+        .sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        ),
     [currentUserId]
   );
   const [messages, setMessages] = useState(initialMessages);
@@ -47,7 +50,7 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-[400px]">
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col h-full min-h-0">
       {/* 聊天室標題 */}
       <div className="p-4 border-b border-gray-100 bg-blue-50 rounded-t-2xl">
         <h3 className="font-bold text-blue-800 flex items-center gap-2">
@@ -56,7 +59,7 @@ export const ChatWidget = ({ currentUserRole, currentUserId }: { currentUserRole
       </div>
 
       {/* 訊息顯示區 (對話泡泡) */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-gray-50">
         {messages.map((msg) => {
           const isMe = msg.senderId === currentUserId;
           return (

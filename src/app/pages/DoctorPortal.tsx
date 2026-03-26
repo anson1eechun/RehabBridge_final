@@ -18,8 +18,9 @@ import {
 } from 'recharts';
 import {
   mockPatients, mockPrescriptions, mockExercises,
-  mockSessionRecords, mockDoctors, mockSystemStats, mockCategoryStats, mockAlertStats
+  mockDoctors, mockSystemStats, mockCategoryStats, mockAlertStats
 } from '../data/mockData';
+import { useSessionRecords } from '../data/sessionStore';
 
 const DOCTOR = mockDoctors[0];
 
@@ -33,6 +34,7 @@ export default function DoctorPortal() {
   // --- 新增：處理「新增處方」彈窗的狀態 ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newRx, setNewRx] = useState({ exerciseId: 'knee_flexion', targetAngle: 90, reps: 10, sets: 3 });
+  const sessionRecords = useSessionRecords();
 
   const patients = mockPatients.filter(p => p.doctorId === DOCTOR.id);
 
@@ -61,7 +63,7 @@ export default function DoctorPortal() {
   const highRiskCount = analyticsData.filter(item => item.compliance < 60 || item.score < 70).length;
   const activeRxCount = mockPrescriptions.filter((rx) => rx.active).length;
   const avgSessionDuration = Math.round(
-    mockSessionRecords.reduce((sum, session) => sum + session.duration, 0) / (mockSessionRecords.length || 1)
+    sessionRecords.reduce((sum, session) => sum + session.duration, 0) / (sessionRecords.length || 1)
   );
   const prescriptionCoverage = Math.round((activeRxCount / (patients.length * 2 || 1)) * 100);
 
@@ -106,7 +108,7 @@ export default function DoctorPortal() {
 
   const selectedPatientData = selectedPatient ? mockPatients.find(p => p.id === selectedPatient) : null;
   const selectedPrescriptions = selectedPatient ? mockPrescriptions.filter(p => p.patientId === selectedPatient) : [];
-  const selectedSessions = selectedPatient ? mockSessionRecords.filter(s => s.patientId === selectedPatient) : [];
+  const selectedSessions = selectedPatient ? sessionRecords.filter(s => s.patientId === selectedPatient) : [];
 
   const handleEditRx = (rxId: string) => {
     const rx = mockPrescriptions.find(p => p.id === rxId);

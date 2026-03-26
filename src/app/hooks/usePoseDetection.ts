@@ -16,41 +16,6 @@ export interface PoseDetectionState {
   fps: number;
 }
 
-function pickCenterPose(poses: any[], videoWidth: number): any | null {
-  if (!poses.length) return null;
-  if (poses.length === 1) return poses[0];
-
-  const getPoseCenterX = (pose: any): number | null => {
-    const points = (pose?.keypoints ?? []).filter((kp: any) =>
-      kp && typeof kp.x === 'number' && (kp.score ?? 1) > 0.2
-    );
-    if (!points.length) return null;
-
-    // Prefer torso center for more stable "main person" picking.
-    const torsoNames = new Set(['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']);
-    const torsoPoints = points.filter((kp: any) => torsoNames.has(kp.name));
-    const usePoints = torsoPoints.length >= 2 ? torsoPoints : points;
-    const avgX = usePoints.reduce((sum: number, kp: any) => sum + kp.x, 0) / usePoints.length;
-    return avgX;
-  };
-
-  const centerX = videoWidth / 2;
-  let bestPose = poses[0];
-  let bestDistance = Number.POSITIVE_INFINITY;
-
-  for (const pose of poses) {
-    const poseCenterX = getPoseCenterX(pose);
-    if (poseCenterX === null) continue;
-    const distance = Math.abs(poseCenterX - centerX);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestPose = pose;
-    }
-  }
-
-  return bestPose;
-}
-
 let tfReadyPromise: Promise<void> | null = null;
 let poseDetectionModulePromise: Promise<any> | null = null;
 let sharedDetectorPromise: Promise<any> | null = null;
@@ -177,9 +142,7 @@ export function usePoseDetection(
         video: {
           facingMode: 'user',
           width: { ideal: 1280 },
-          height: { ideal: 960 },
-          aspectRatio: { ideal: 4 / 3 },
-          frameRate: { ideal: 30, max: 60 },
+          height: { ideal: 720 },
         },
         audio: false,
       });
@@ -224,19 +187,7 @@ export function usePoseDetection(
           }
 
           if (poses.length > 0) {
-            const mainPose = pickCenterPose(poses, video.videoWidth || video.clientWidth || 1280);
-            if (!mainPose) {
-              setState(prev => ({
-                ...prev,
-                keypoints: [],
-                status: 'detecting',
-                fps: fpsRef.current,
-              }));
-              rafRef.current = requestAnimationFrame(detect);
-              return;
-            }
-
-            const keypoints: Keypoint[] = mainPose.keypoints.map((kp: any, index: number) => ({
+            const keypoints: Keypoint[] = poses[0].keypoints.map((kp: any, index: number) => ({
               name: kp.name,
               x: kp.x,
               y: kp.y,
