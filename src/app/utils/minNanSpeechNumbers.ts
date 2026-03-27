@@ -49,3 +49,26 @@ export function formatSecondsSpokenZh(seconds: number): string {
   if (n <= 0) return '零秒';
   return `${integerToZhSpeech(n)}秒`;
 }
+
+/**
+ * 「第 N 下」— 台語音節結構：**tē-** + **數詞** + **-ē**
+ * - **第** → tē-（序數前綴）
+ * - 中間為第幾「下」的**序數**（一、二、三…十一）：it、jī、sann…（非阿拉伯數字）
+ * - **下** → -ē（此處指第幾「下」／次，勿與疑問詞混淆）
+ *
+ * 漢字寫成「第一下」「第二下」「第三下」，對應 tē-it-ē、tē-jī-ē（或 tē-nn̄g-ē）、tē-sann-ē。
+ * **勿**寫成「**第幾下**」— 那是問句「第-kúi-ē／第幾次」，與序數「第 N 下」不同。
+ * 亦避免「第1下」等阿拉伯數字，以免 TTS 唸錯。
+ */
+export function ordinalRepCountForSpeech(n: number): string {
+  const k = Math.max(1, Math.floor(Math.abs(n)));
+  return `第${integerToZhSpeech(k)}下`;
+}
+
+/**
+ * 「第 N 組」用漢字序數（與 ordinalRepCountForSpeech 同理）。
+ */
+export function ordinalSetCountForSpeech(n: number): string {
+  const k = Math.max(1, Math.floor(Math.abs(n)));
+  return `第${integerToZhSpeech(k)}組`;
+}

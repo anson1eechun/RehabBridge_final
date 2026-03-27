@@ -34,7 +34,12 @@ import {
 import { mockExercises, mockPrescriptions } from '../data/mockData';
 import { appendSessionRecord } from '../data/sessionStore';
 import { readVoiceDialectPreference } from '../utils/voiceDialectPreference';
-import { formatSecondsSpokenZh, integerToZhSpeech } from '../utils/minNanSpeechNumbers';
+import {
+  formatSecondsSpokenZh,
+  integerToZhSpeech,
+  ordinalRepCountForSpeech,
+  ordinalSetCountForSpeech,
+} from '../utils/minNanSpeechNumbers';
 
 const PATIENT_ID = 'P001';
 /** 患者端：inline style 字級統一放大（約 +22%） */
@@ -131,13 +136,13 @@ export default function RehabSession() {
       `今天是「${name}」`,
       `角度大概抓 ${targetAngle} 度就行`,
       `一組 ${totalReps} 下，總共 ${totalSets} 組`,
-      `有對到先停 ${formatSecondsSpokenZh(effectiveHoldSeconds)}`,
+      `有對到先停 ${effectiveHoldSeconds} 秒`,
     ];
     const tai: string[] = [
       `今仔日是「${name}」`,
-      `角度大約 ${integerToZhSpeech(targetAngle)} 度就好`,
-      `一組 ${integerToZhSpeech(totalReps)} 下，攏總 ${integerToZhSpeech(totalSets)} 組`,
-      `有對著先停 ${formatSecondsSpokenZh(effectiveHoldSeconds)}`,
+      `角度大約 ${targetAngle} 度就好`,
+      `一組 ${totalReps} 下，攏總 ${totalSets} 組`,
+      `有對著先停 ${effectiveHoldSeconds} 秒`,
     ];
     return voiceDialect === 'taiwanese' ? tai : zh;
   }, [
@@ -152,9 +157,9 @@ export default function RehabSession() {
   const buildGoalBriefText = useCallback(() => {
     const name = exercise?.name ?? '這個動作';
     if (voiceDialect === 'taiwanese') {
-      return `共你講一下，今仔日是「${name}」。角度大約${integerToZhSpeech(targetAngle)}度就好，一組${integerToZhSpeech(totalReps)}下、攏總${integerToZhSpeech(totalSets)}組；有對著就定${formatSecondsSpokenZh(effectiveHoldSeconds)}。莫急，看畫面，欲開始才按開始。`;
+      return `共你講一下，今仔日是「${name}」。角度大約${targetAngle}度就好，一組${totalReps}下、攏總${totalSets}組；有對著就定${effectiveHoldSeconds}秒。莫急，看畫面，欲開始才按開始。`;
     }
-    return `跟你講一下，今天是「${name}」。角度大概抓${targetAngle}度就行，一組${totalReps}下、總共${totalSets}組；有對到就停${formatSecondsSpokenZh(effectiveHoldSeconds)}。不用急，看好畫面，準備好了再按開始。`;
+    return `跟你講一下，今天是「${name}」。角度大概抓${targetAngle}度就行，一組${totalReps}下、總共${totalSets}組；有對到就停${effectiveHoldSeconds}秒。不用急，看好畫面，準備好了再按開始。`;
   }, [
     exercise?.name,
     voiceDialect,
@@ -178,25 +183,25 @@ export default function RehabSession() {
       const useTai = voiceDialect === 'taiwanese' && tai != null;
       switch (key) {
         case 'start':
-          return (useTai ? tai.start : exercise?.voicePrompts.start) ?? '好，動起來';
+          return (useTai ? tai.start : exercise?.voicePrompts.start) ?? '好，開始做啦';
         case 'achieved':
-          return (useTai ? tai.achieved : exercise?.voicePrompts.achieved) ?? '有囉，角度對了，先停著';
+          return (useTai ? tai.achieved : exercise?.voicePrompts.achieved) ?? '有矣，角度有對，先停咧';
         case 'complete':
-          return (useTai ? tai.complete : exercise?.voicePrompts.complete) ?? '今天這樣就夠了，收工';
+          return (useTai ? tai.complete : exercise?.voicePrompts.complete) ?? '今仔日按呢就會使，先歇喘';
         case 'setComplete':
           return useTai
-            ? `第${integerToZhSpeech(n ?? 1)}組先到這。喘一下，等等閣下一組`
-            : `第${n ?? 1}組先到這。喘一下，等等再下一組`;
+            ? `${ordinalSetCountForSpeech(n ?? 1)}先到這。喘一下，等等閣下一組`
+            : `${ordinalSetCountForSpeech(n ?? 1)}先到這。喘一下，等等再下一組`;
         case 'repComplete':
           return useTai
-            ? `第${integerToZhSpeech(n ?? 1)}下有了啦`
-            : `第${n ?? 1}下有了`;
+            ? `${ordinalRepCountForSpeech(n ?? 1)}有了啦`
+            : `${ordinalRepCountForSpeech(n ?? 1)}有了`;
         case 'tooLow':
-          return (useTai ? tai!.tooLow : exercise?.voicePrompts.tooLow) ?? '還差一點，再開一點沒關係';
+          return (useTai ? tai!.tooLow : exercise?.voicePrompts.tooLow) ?? '猶差一屑仔，再開一點沒關係';
         case 'tooHigh':
           return useTai
-            ? (exercise?.voicePromptsTai?.tooHigh ?? '收一屑仔啦，莫硬撐')
-            : ((exercise?.voicePrompts as { tooHigh?: string })?.tooHigh ?? '收一點，別硬撐');
+            ? (exercise?.voicePromptsTai?.tooHigh ?? '收一屑仔啦，莫硬拚')
+            : ((exercise?.voicePrompts as { tooHigh?: string })?.tooHigh ?? '收一點，別硬拚');
         case 'paused':
           return useTai ? '好，先停啦' : '好，先停';
         case 'resume':
@@ -415,11 +420,7 @@ export default function RehabSession() {
         setHoldCountdown(effectiveHoldSeconds);
         if (!isThrottled || lastFeedbackRef.current !== 'achieved') {
           speakLocalized('achieved', false);
-          setFeedbackMessage(
-            voiceDialect === 'taiwanese'
-              ? `對了，就這樣停${formatSecondsSpokenZh(effectiveHoldSeconds)}`
-              : `對了，就這樣停個${formatSecondsSpokenZh(effectiveHoldSeconds)}`
-          );
+          setFeedbackMessage(`著啦，按呢定咧${formatSecondsSpokenZh(effectiveHoldSeconds)}`);
           setFeedbackType('success');
           lastFeedbackRef.current = 'achieved';
           lastFeedbackTimeRef.current = now;
@@ -444,15 +445,11 @@ export default function RehabSession() {
                     setSessionComplete(true);
                     setIsActive(false);
                     speakLocalized('complete', false);
-                    setFeedbackMessage('今天這輪做完了');
+                    setFeedbackMessage('今仔日這逝做煞矣');
                     setFeedbackType('success');
                   } else {
                     speakLocalized('setComplete', false, prevSet);
-                    setFeedbackMessage(
-                      voiceDialect === 'taiwanese'
-                        ? `第${integerToZhSpeech(prevSet)}組結束，等等閣下一組`
-                        : `第${prevSet}組結束，等等下一組`
-                    );
+                    setFeedbackMessage(`第${prevSet}組結束，等等下一組`);
                     setFeedbackType('info');
                   }
                   return nextSet > totalSets ? prevSet : nextSet;
@@ -460,11 +457,7 @@ export default function RehabSession() {
                 return 0;
               }
               speakLocalized('repComplete', false, next);
-              setFeedbackMessage(
-                voiceDialect === 'taiwanese'
-                  ? `第${integerToZhSpeech(next)}下，可以`
-                  : `第${next}下，可以`
-              );
+              setFeedbackMessage(`${ordinalRepCountForSpeech(next)}OK`);
               setFeedbackType('info');
               return next;
             });
@@ -514,31 +507,7 @@ export default function RehabSession() {
     targetAngle,
     exercise,
     speakLocalized,
-    voiceDialect,
   ]);
-
-  /** 右欄數值：台語模式用漢字讀法，利於與語音一致、亦利 TTS */
-  const exerciseInfoRows = useMemo(
-    () =>
-      voiceDialect === 'taiwanese'
-        ? [
-            { label: '目標角度', value: `${integerToZhSpeech(targetAngle)}度`, color: '#FFD600' },
-            {
-              label: '容許誤差',
-              value: `正負${integerToZhSpeech(effectiveTolerance)}度`,
-              color: 'rgba(255,255,255,0.6)',
-            },
-            { label: '保持時間', value: formatSecondsSpokenZh(effectiveHoldSeconds), color: 'rgba(255,255,255,0.6)' },
-            { label: '頻率', value: prescription?.frequency ?? '每天兩次', color: 'rgba(255,255,255,0.6)' },
-          ]
-        : [
-            { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
-            { label: '容許誤差', value: `±${effectiveTolerance}°`, color: 'rgba(255,255,255,0.6)' },
-            { label: '保持時間', value: formatSecondsSpokenZh(effectiveHoldSeconds), color: 'rgba(255,255,255,0.6)' },
-            { label: '頻率', value: prescription?.frequency ?? '每天兩次', color: 'rgba(255,255,255,0.6)' },
-          ],
-    [voiceDialect, targetAngle, effectiveTolerance, effectiveHoldSeconds, prescription?.frequency]
-  );
 
   useEffect(() => {
     if (!sessionComplete || !exerciseId || sessionSavedRef.current) return;
@@ -590,7 +559,7 @@ export default function RehabSession() {
     angleStatsRef.current = { sum: 0, count: 0, max: 0 };
     voiceFeedbackCountRef.current = 0;
     sessionSavedRef.current = false;
-    setFeedbackMessage(exercise?.voicePrompts.start ?? '好，動起來');
+    setFeedbackMessage(exercise?.voicePrompts.start ?? '好，開始做啦');
     setFeedbackType('info');
     speakLocalized('start', true);
   };
@@ -1120,7 +1089,12 @@ export default function RehabSession() {
             >
               今天這樣練
             </div>
-            {exerciseInfoRows.map(item => (
+            {[
+              { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
+              { label: '容許誤差', value: `±${effectiveTolerance}°`, color: 'rgba(255,255,255,0.6)' },
+              { label: '保持時間', value: `${effectiveHoldSeconds} 秒`, color: 'rgba(255,255,255,0.6)' },
+              { label: '頻率', value: prescription?.frequency ?? '每天兩次', color: 'rgba(255,255,255,0.6)' },
+            ].map(item => (
               <div key={item.label} className="flex justify-between items-center gap-2 mb-2.5">
                 <span
                   style={{

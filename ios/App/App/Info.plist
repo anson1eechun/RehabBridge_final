@@ -47,5 +47,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- WKWebView / getUserMedia 必須有用途說明，否則相機無法啟動（錯誤不會是單純的「拒絕權限」） -->
+	<key>NSCameraUsageDescription</key>
+	<string>需要使用相機以進行復健姿態追蹤與動作偵測。</string>
 </dict>
 </plist>

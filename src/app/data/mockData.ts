@@ -172,7 +172,7 @@ export const mockExercises: Exercise[] = [
       start: '慢慢彎就好，莫急啦',
       tooLow: '閣彎入來一屑仔啦',
       achieved: '好，定咧',
-      complete: '先做到這啦',
+      complete: '先做到遮啦',
       tooHigh: '收一屑仔啦，莫硬撐',
     },
     bodyArea: '膝蓋', difficulty: 'easy'
