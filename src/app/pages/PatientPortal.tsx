@@ -336,7 +336,7 @@ export default function PatientPortal() {
                   const categoryTheme: Record<string, { bg: string; mark: string }> = {
                     上肢: { bg: 'from-sky-100/70 to-blue-50/70', mark: '💪' },
                     下肢: { bg: 'from-emerald-100/70 to-teal-50/70', mark: '🦵' },
-                    核心: { bg: 'from-amber-100/70 to-orange-50/70', mark: '🧘' },
+                    核心: { bg: 'from-amber-100/70 to-orange-50/70', mark: '🧘' }, //暫時無使用此分類
                   };
                   const theme = categoryTheme[ex.category] ?? { bg: 'from-slate-100/70 to-slate-50/70', mark: '🏃' };
 
@@ -558,7 +558,7 @@ export default function PatientPortal() {
               </div>
             </div>
 
-            {/* 激勵卡片 */}
+            {/* 激勵卡片_笑死8度還是寫死的 */}
             <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 rounded-[2rem] text-white shadow-lg">
               <Award className="mb-4 opacity-80" size={32} />
               <p className="font-bold text-xl">做得很好！</p>

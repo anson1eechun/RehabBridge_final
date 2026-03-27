@@ -89,7 +89,7 @@ export default function FamilyDashboard() {
               className="flex flex-nowrap items-center gap-2.5 text-white/85 hover:text-white mb-4 transition-colors text-2xl md:text-3xl font-bold min-h-[52px] w-fit rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-5 py-2.5 active:scale-[0.98] -ml-1"
             >
               <ArrowLeft size={30} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              <span className="whitespace-nowrap">返回身分選擇</span>
+              <span className="whitespace-nowrap">返回</span>
             </button>
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center text-white text-2xl font-bold backdrop-blur-md border border-white/30">

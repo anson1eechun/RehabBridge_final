@@ -84,7 +84,7 @@ const userFlows = [
     color: '#1565C0',
     bg: '#E3F2FD',
     steps: [
-      { id: 1, action: '開啟 App → 選擇「長者端」', note: '大字體、高對比介面' },
+      { id: 1, action: '開啟 App → 選擇「長者端」', note: '大字體介面' },
       { id: 2, action: '查看今日訓練計畫', note: '有效處方中腿部復健 2 項＋手部復健 2 項；卡片右側淡色圖示' },
       { id: 3, action: '點選訓練項目', note: '進入該動作復健頁（無列表箭頭，整卡可點）' },
       { id: 4, action: '按「開始訓練」→ 相機啟動', note: '請求相機權限' },
@@ -598,7 +598,6 @@ if (current > target)               → 'above'`}
                   'Android: MLKit Pose Detection API',
                   '離線推理：Core ML (iOS) / TFLite (Android)',
                   '延遲：原生 < 16ms vs Web ~33ms',
-                  '支援：多人偵測 (MULTIPERSON_PERFORMANCE)',
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />

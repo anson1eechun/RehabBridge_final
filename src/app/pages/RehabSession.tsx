@@ -717,7 +717,7 @@ export default function RehabSession() {
                   ? 'OpenAI'
                   : wantsYating && !yatingReady
                     ? '雅婷未就緒'
-                    : wantsOpenAi && !openAiReady
+                    : wantsOpenAi && !openAiReady //openai是三小
                       ? 'OpenAI 未就緒'
                       : '本機語音'}
             </span>
