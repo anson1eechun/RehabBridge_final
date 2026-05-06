@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router';
 import {
   ArrowLeft, Users, Activity, BarChart3, Settings,
   ChevronRight, Target, Plus, Edit3, TrendingUp,
-  AlertCircle, CheckCircle, Clock, Stethoscope, Save, X
+  AlertCircle, CheckCircle, Clock, Stethoscope, Save, X, Trophy, Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -17,10 +17,22 @@ import {
   PieChart, Pie, Cell, Legend
 } from 'recharts';
 import {
-  mockPatients, mockPrescriptions, mockExercises,
+  mockPatients, mockExercises,
   mockDoctors, mockSystemStats, mockCategoryStats, mockAlertStats
 } from '../data/mockData';
 import { useSessionRecords } from '../data/sessionStore';
+import { buildScoreLeaderboard } from '../data/sessionStore';
+import {
+  createPrescription,
+  DIFFICULTY_LEVELS,
+  getDifficultyMeta,
+  normalizeDifficultyLevel,
+  resolvePrescriptionPlan,
+  updatePrescription,
+  usePrescriptions,
+  type PrescriptionEditableFields,
+} from '../data/prescriptionStore';
+import { buildAiDifficultySuggestion, getSuggestionTone } from '../data/aiDifficultyEngine';
 
 const DOCTOR = mockDoctors[0];
 
@@ -29,12 +41,26 @@ export default function DoctorPortal() {
   const [activeTab, setActiveTab] = useState<'patients' | 'analytics' | 'prescriptions'>('patients');
   const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
   const [editingRx, setEditingRx] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<{ targetAngle: number; reps: number; sets: number }>({ targetAngle: 90, reps: 10, sets: 3 });
+  const [editValues, setEditValues] = useState<PrescriptionEditableFields>({
+    targetAngle: 90,
+    reps: 10,
+    sets: 3,
+    holdSeconds: 3,
+    difficultyLevel: 2,
+  });
 
   // --- 新增：處理「新增處方」彈窗的狀態 ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newRx, setNewRx] = useState({ exerciseId: 'knee_flexion', targetAngle: 90, reps: 10, sets: 3 });
+  const [newRx, setNewRx] = useState({
+    exerciseId: 'knee_flexion',
+    targetAngle: 90,
+    reps: 10,
+    sets: 3,
+    holdSeconds: 3,
+    difficultyLevel: 2,
+  });
   const sessionRecords = useSessionRecords();
+  const prescriptions = usePrescriptions();
 
   const patients = mockPatients.filter(p => p.doctorId === DOCTOR.id);
 
@@ -61,7 +87,7 @@ export default function DoctorPortal() {
     analyticsData.reduce((sum, item) => sum + Math.abs(item.target - item.avgAngle), 0) / analyticsData.length
   );
   const highRiskCount = analyticsData.filter(item => item.compliance < 60 || item.score < 70).length;
-  const activeRxCount = mockPrescriptions.filter((rx) => rx.active).length;
+  const activeRxCount = prescriptions.filter((rx) => rx.active).length;
   const avgSessionDuration = Math.round(
     sessionRecords.reduce((sum, session) => sum + session.duration, 0) / (sessionRecords.length || 1)
   );
@@ -107,15 +133,113 @@ export default function DoctorPortal() {
   ];
 
   const selectedPatientData = selectedPatient ? mockPatients.find(p => p.id === selectedPatient) : null;
-  const selectedPrescriptions = selectedPatient ? mockPrescriptions.filter(p => p.patientId === selectedPatient) : [];
+  const selectedPrescriptions = selectedPatient ? prescriptions.filter(p => p.patientId === selectedPatient) : [];
   const selectedSessions = selectedPatient ? sessionRecords.filter(s => s.patientId === selectedPatient) : [];
+  const newRxDifficulty = getDifficultyMeta(newRx.difficultyLevel);
+  const editDifficulty = getDifficultyMeta(editValues.difficultyLevel);
+  const totalLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'all',
+    includeEmpty: true,
+  });
+  const todayLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'today',
+    includeEmpty: false,
+  });
+  const weeklyLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'week',
+    includeEmpty: false,
+  });
+  const personalBestLeaderboard = [...totalLeaderboard]
+    .filter((entry) => entry.bestScore > 0)
+    .sort((a, b) => b.bestScore - a.bestScore)
+    .slice(0, 5);
+
+  const leaderboardSections = [
+    {
+      title: '今日排行',
+      subtitle: '今日平均分',
+      entries: todayLeaderboard.slice(0, 5),
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.avgScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => `${entry.sessionCount} 次訓練`,
+    },
+    {
+      title: '本週排行',
+      subtitle: '週平均分 + 完成次數',
+      entries: weeklyLeaderboard.slice(0, 5),
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.avgScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => `${entry.sessionCount} 次完成`,
+    },
+    {
+      title: '個人最佳',
+      subtitle: '患者最高單次分數',
+      entries: personalBestLeaderboard,
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.bestScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => entry.lastSessionDate || '尚無紀錄',
+    },
+  ];
 
   const handleEditRx = (rxId: string) => {
-    const rx = mockPrescriptions.find(p => p.id === rxId);
+    const rx = prescriptions.find(p => p.id === rxId);
     if (rx) {
-      setEditValues({ targetAngle: rx.targetAngle, reps: rx.reps, sets: rx.sets });
+      setEditValues({
+        targetAngle: rx.targetAngle,
+        reps: rx.reps,
+        sets: rx.sets,
+        holdSeconds: rx.holdSeconds,
+        difficultyLevel: rx.difficultyLevel ?? 2,
+      });
       setEditingRx(rxId);
     }
+  };
+
+  const handleSaveRx = () => {
+    if (!editingRx) return;
+    updatePrescription(editingRx, editValues);
+    setEditingRx(null);
+  };
+
+  const handleApplyAiSuggestion = (rxId: string, difficultyLevel: number) => {
+    updatePrescription(rxId, {
+      difficultyLevel: normalizeDifficultyLevel(difficultyLevel),
+    });
+    setEditingRx(null);
+  };
+
+  const handleAddPrescription = () => {
+    if (!selectedPatient) return;
+    const exercise = mockExercises.find((ex) => ex.id === newRx.exerciseId);
+    const existingRx = prescriptions.find(
+      (rx) =>
+        rx.patientId === selectedPatient &&
+        rx.exerciseId === newRx.exerciseId &&
+        rx.active
+    );
+    const values = {
+      targetAngle: newRx.targetAngle || exercise?.targetAngle || 90,
+      reps: newRx.reps || exercise?.reps || 10,
+      sets: newRx.sets || exercise?.sets || 3,
+      holdSeconds: newRx.holdSeconds || exercise?.holdSeconds || 3,
+      difficultyLevel: normalizeDifficultyLevel(newRx.difficultyLevel),
+    };
+
+    if (existingRx) {
+      updatePrescription(existingRx.id, values);
+      setIsAddModalOpen(false);
+      return;
+    }
+
+    createPrescription({
+      patientId: selectedPatient,
+      doctorId: DOCTOR.id,
+      exerciseId: newRx.exerciseId,
+      ...values,
+      frequency: '每天兩次',
+      notes: '醫師新增復健處方',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: '2026-12-31',
+      active: true,
+    });
+    setIsAddModalOpen(false);
   };
 
   return (
@@ -159,13 +283,58 @@ export default function DoctorPortal() {
                     <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
                       value={newRx.reps} onChange={(e) => setNewRx({...newRx, reps: parseInt(e.target.value)})}/>
                   </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">組數</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
+                      value={newRx.sets} onChange={(e) => setNewRx({...newRx, sets: parseInt(e.target.value)})}/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">保持秒數</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
+                      value={newRx.holdSeconds} onChange={(e) => setNewRx({...newRx, holdSeconds: parseInt(e.target.value)})}/>
+                  </div>
+                </div>
+                <div className="rounded-2xl p-4 bg-purple-50 border border-purple-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-xs font-bold text-purple-700 block">關卡難度</label>
+                    <span className="text-sm font-black text-purple-800">
+                      第 {newRxDifficulty.level} 關 / {newRxDifficulty.label}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={newRx.difficultyLevel}
+                    onChange={(e) =>
+                      setNewRx({
+                        ...newRx,
+                        difficultyLevel: normalizeDifficultyLevel(e.target.value),
+                      })
+                    }
+                    className="w-full accent-purple-700"
+                  />
+                  <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+                    {DIFFICULTY_LEVELS.map((item) => (
+                      <span
+                        key={item.level}
+                        className={`text-[10px] font-bold ${
+                          item.level === newRxDifficulty.level ? 'text-purple-800' : 'text-purple-300'
+                        }`}
+                      >
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs font-semibold text-purple-500 mt-2">{newRxDifficulty.tone}</p>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-gray-400 bg-gray-100">取消</button>
                 <button 
-                  onClick={() => { alert('處方已成功發布！'); setIsAddModalOpen(false); }}
+                  onClick={handleAddPrescription}
                   className="flex-1 py-3 rounded-xl font-bold text-white shadow-lg" 
                   style={{ background: '#5E35B1' }}
                 >
@@ -339,6 +508,11 @@ export default function DoctorPortal() {
                         {selectedPrescriptions.map(rx => {
                           const ex = mockExercises.find(e => e.id === rx.exerciseId);
                           const isEditing = editingRx === rx.id;
+                          const plan = resolvePrescriptionPlan(rx, ex);
+                          const aiSuggestion = buildAiDifficultySuggestion(rx, ex, sessionRecords);
+                          const aiTone = getSuggestionTone(aiSuggestion.direction);
+                          const canApplyAiSuggestion =
+                            aiSuggestion.direction === 'increase' || aiSuggestion.direction === 'decrease';
                           return (
                             <div key={rx.id} className="rounded-xl p-4"
                               style={{ background: '#F8F4FF', border: '1px solid #E1D5FF' }}>
@@ -351,26 +525,112 @@ export default function DoctorPortal() {
                               </div>
                               {isEditing ? (
                                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
-                                  <div className="grid grid-cols-3 gap-3 mb-3">
-                                    {[{ label: '目標角度', key: 'targetAngle' }, { label: '每組次數', key: 'reps' }, { label: '組數', key: 'sets' }].map(field => (
+                                  <div className="grid grid-cols-4 gap-3 mb-3">
+                                    {[
+                                      { label: '目標角度', key: 'targetAngle' },
+                                      { label: '每組次數', key: 'reps' },
+                                      { label: '組數', key: 'sets' },
+                                      { label: '保持秒數', key: 'holdSeconds' },
+                                    ].map(field => (
                                       <div key={field.key}>
                                         <label className="text-[10px] text-gray-400 block mb-1">{field.label}</label>
                                         <input type="number" value={editValues[field.key as keyof typeof editValues]} onChange={e => setEditValues(prev => ({ ...prev, [field.key]: parseInt(e.target.value) }))} className="w-full rounded-lg px-2 py-2 border border-purple-200 text-sm font-bold text-purple-700"/>
                                       </div>
                                     ))}
                                   </div>
-                                  <button onClick={() => setEditingRx(null)} className="w-full py-2 rounded-lg text-white font-bold text-xs" style={{ background: '#4A148C' }}><Save size={12} className="inline mr-1" />儲存</button>
+                                  <div className="rounded-xl p-3 bg-white border border-purple-100 mb-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-[10px] text-purple-500 font-bold">關卡難度</span>
+                                      <span className="text-xs text-purple-800 font-black">
+                                        第 {editDifficulty.level} 關 / {editDifficulty.label}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={1}
+                                      max={5}
+                                      step={1}
+                                      value={editValues.difficultyLevel}
+                                      onChange={(e) =>
+                                        setEditValues((prev) => ({
+                                          ...prev,
+                                          difficultyLevel: normalizeDifficultyLevel(e.target.value),
+                                        }))
+                                      }
+                                      className="w-full accent-purple-700"
+                                    />
+                                    <div className="mt-1 grid grid-cols-5 gap-1 text-center">
+                                      {DIFFICULTY_LEVELS.map((item) => (
+                                        <span
+                                          key={item.level}
+                                          className={`text-[10px] font-bold ${
+                                            item.level === editDifficulty.level ? 'text-purple-800' : 'text-purple-300'
+                                          }`}
+                                        >
+                                          {item.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <p className="text-[11px] text-purple-500 font-semibold mt-1">
+                                      實際訓練：{Math.max(5, Math.min(175, editValues.targetAngle + editDifficulty.targetAngleDelta))}° ·
+                                      {editValues.sets + editDifficulty.setsDelta}組 x {editValues.reps + editDifficulty.repsDelta}次 ·
+                                      保持 {editValues.holdSeconds + editDifficulty.holdSecondsDelta} 秒
+                                    </p>
+                                  </div>
+                                  <button onClick={handleSaveRx} className="w-full py-2 rounded-lg text-white font-bold text-xs" style={{ background: '#4A148C' }}><Save size={12} className="inline mr-1" />儲存</button>
                                 </motion.div>
                               ) : (
-                                <div className="grid grid-cols-4 gap-2">
-                                  {[{ label: '角度', value: `${rx.targetAngle}°` }, { label: '組數', value: `${rx.sets}組` }, { label: '次數', value: `${rx.reps}次` }, { label: '保持', value: `${rx.holdSeconds}s` }].map(item => (
+                                <>
+                                <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-purple-700 border border-purple-100">
+                                  第 {plan.difficultyLevel} 關 / {plan.difficultyLabel}
+                                </div>
+                                <div className="grid grid-cols-5 gap-2">
+                                  {[
+                                    { label: '角度', value: `${plan.effectiveTargetAngle}°` },
+                                    { label: '誤差', value: `±${plan.effectiveTolerance}°` },
+                                    { label: '組數', value: `${plan.effectiveSets}組` },
+                                    { label: '次數', value: `${plan.effectiveReps}次` },
+                                    { label: '保持', value: `${plan.effectiveHoldSeconds}s` },
+                                  ].map(item => (
                                     <div key={item.label} className="rounded-lg p-2 text-center bg-white">
                                       <div style={{ fontSize: 13, fontWeight: 700, color: '#4A148C' }}>{item.value}</div>
                                       <div style={{ fontSize: 10, color: '#90A4AE' }}>{item.label}</div>
                                     </div>
                                   ))}
                                 </div>
+                                </>
                               )}
+                              <div
+                                className="mt-3 rounded-xl border p-3"
+                                style={{ background: aiTone.bg, borderColor: aiTone.border }}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-start gap-2">
+                                    <Brain size={17} style={{ color: aiTone.text, marginTop: 2 }} />
+                                    <div>
+                                      <div className="text-xs font-black" style={{ color: aiTone.text }}>
+                                        {aiTone.label} · 信心度 {aiSuggestion.confidence}%
+                                      </div>
+                                      <p className="text-xs font-bold mt-1" style={{ color: '#374151', lineHeight: 1.45 }}>
+                                        {aiSuggestion.doctorSummary}
+                                      </p>
+                                      <p className="text-[11px] mt-1" style={{ color: '#6B7280', lineHeight: 1.45 }}>
+                                        {aiSuggestion.reason}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {canApplyAiSuggestion && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApplyAiSuggestion(rx.id, aiSuggestion.suggestedLevel)}
+                                      className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white"
+                                      style={{ background: aiTone.text }}
+                                    >
+                                      套用
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           );
                         })}
@@ -402,6 +662,83 @@ export default function DoctorPortal() {
                   <div style={{ fontSize: 24, fontWeight: 800, color: '#1A2035' }}>{kpi.value}</div>
                 </div>
               ))}
+            </div>
+
+            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="flex items-center gap-2" style={{ fontSize: 18, fontWeight: 800, color: '#1A2035' }}>
+                    <Trophy size={20} style={{ color: '#F59E0B' }} />
+                    復健分數排行榜
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#78909C', marginTop: 4 }}>
+                    依照訓練分數自動統計，協助醫師快速掌握努力程度與復健表現。
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#FFF7ED', color: '#C2410C' }}>
+                  Score Leaderboard
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {leaderboardSections.map((section) => (
+                  <div key={section.title} className="rounded-2xl p-4 border" style={{ borderColor: '#EEF2F7', background: '#FAFBFD' }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#1A2035' }}>{section.title}</div>
+                        <div style={{ fontSize: 12, color: '#90A4AE', marginTop: 2 }}>{section.subtitle}</div>
+                      </div>
+                    </div>
+
+                    {section.entries.length > 0 ? (
+                      <div className="space-y-2">
+                        {section.entries.map((entry) => (
+                          <div key={`${section.title}-${entry.patientId}`} className="flex items-center gap-3 rounded-xl bg-white px-3 py-3 border border-gray-100">
+                            <div
+                              className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black"
+                              style={{
+                                background: entry.rank === 1 ? '#FEF3C7' : entry.rank === 2 ? '#E0F2FE' : entry.rank === 3 ? '#FCE7F3' : '#F3F4F6',
+                                color: entry.rank === 1 ? '#B45309' : entry.rank === 2 ? '#0369A1' : entry.rank === 3 ? '#BE185D' : '#64748B',
+                              }}
+                            >
+                              {entry.rank}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold truncate" style={{ color: '#1A2035', fontSize: 14 }}>{entry.name}</div>
+                              <div style={{ color: '#90A4AE', fontSize: 12 }}>{section.detail(entry)}</div>
+                            </div>
+                            <div className="text-right font-black" style={{ color: '#5E35B1', fontSize: 18 }}>
+                              {section.value(entry)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-white border border-dashed border-gray-200 p-4 text-center" style={{ color: '#94A3B8', fontSize: 13, fontWeight: 700 }}>
+                        尚無訓練紀錄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-bold" style={{ color: '#4A148C', fontSize: 15 }}>全患者總排行</span>
+                  <span style={{ color: '#7E57C2', fontSize: 12, fontWeight: 700 }}>依平均分數排序</span>
+                </div>
+                <div className="space-y-2">
+                  {totalLeaderboard.slice(0, 6).map((entry) => (
+                    <div key={`total-${entry.patientId}`} className="grid grid-cols-[44px_1fr_72px_72px_88px] items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm">
+                      <span className="font-black text-purple-700">#{entry.rank}</span>
+                      <span className="font-bold text-gray-700 truncate">{entry.name}</span>
+                      <span className="font-bold text-gray-500 text-right">{entry.avgScore}分</span>
+                      <span className="font-bold text-gray-500 text-right">{entry.bestScore}最佳</span>
+                      <span className="font-bold text-gray-400 text-right">{entry.sessionCount}次</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
@@ -553,12 +890,48 @@ export default function DoctorPortal() {
                   </div>
                 </div>
                 <div className="p-4 space-y-2">
-                  {mockPrescriptions.filter(p => p.patientId === patient.id).map(rx => (
-                    <div key={rx.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded-lg">
-                      <span className="font-medium text-gray-600">{mockExercises.find(e => e.id === rx.exerciseId)?.name}</span>
-                      <span className="font-bold text-purple-700">{rx.targetAngle}° | {rx.sets}x{rx.reps}</span>
-                    </div>
-                  ))}
+                  {prescriptions.filter(p => p.patientId === patient.id).map(rx => {
+                    const ex = mockExercises.find(e => e.id === rx.exerciseId);
+                    const plan = resolvePrescriptionPlan(rx, ex);
+                    const aiSuggestion = buildAiDifficultySuggestion(rx, ex, sessionRecords);
+                    const aiTone = getSuggestionTone(aiSuggestion.direction);
+                    const canApplyAiSuggestion =
+                      aiSuggestion.direction === 'increase' || aiSuggestion.direction === 'decrease';
+                    return (
+                      <div key={rx.id} className="text-sm p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex justify-between items-center gap-3">
+                          <span className="font-medium text-gray-600">{ex?.name}</span>
+                          <span className="font-bold text-purple-700">
+                            第{plan.difficultyLevel}關 · {plan.effectiveTargetAngle}° | {plan.effectiveSets}x{plan.effectiveReps}
+                          </span>
+                        </div>
+                        <div
+                          className="mt-2 rounded-xl border px-3 py-2 flex items-center justify-between gap-3"
+                          style={{ background: aiTone.bg, borderColor: aiTone.border }}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 text-xs font-black" style={{ color: aiTone.text }}>
+                              <Brain size={14} />
+                              <span>{aiTone.label} · {aiSuggestion.confidence}%</span>
+                            </div>
+                            <p className="text-[11px] mt-1 truncate" style={{ color: '#6B7280' }}>
+                              {aiSuggestion.reason}
+                            </p>
+                          </div>
+                          {canApplyAiSuggestion && (
+                            <button
+                              type="button"
+                              onClick={() => handleApplyAiSuggestion(rx.id, aiSuggestion.suggestedLevel)}
+                              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white"
+                              style={{ background: aiTone.text }}
+                            >
+                              套用
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

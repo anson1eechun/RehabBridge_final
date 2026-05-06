@@ -5,14 +5,28 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Activity, CheckCircle, Clock, Award,
-  ArrowLeft, Bell, Calendar, Flame, Target, Play, X
+  ArrowLeft, Bell, Calendar, Flame, Target, Play, X, Brain
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  mockPatients, mockPrescriptions, mockExercises,
+  mockPatients, mockExercises,
   mockAngleProgress
 } from '../data/mockData';
-import { useSessionRecords, buildWeeklyActivityFromSessions } from '../data/sessionStore';
+import {
+  useSessionRecords,
+  buildScoreLeaderboard,
+  buildWeeklyActivityFromSessions,
+  findPersonalBest,
+} from '../data/sessionStore';
+import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
+import {
+  buildProgressSummary,
+  getTodayIsoDate,
+  recordPatientOpen,
+  syncUnlockedBadges,
+  usePatientProgress,
+} from '../data/progressStore';
+import { buildAiDifficultySuggestion, getSuggestionTone } from '../data/aiDifficultyEngine';
 import {
   readVoiceDialectPreference,
   writeVoiceDialectPreference,
@@ -30,6 +44,8 @@ export default function PatientPortal() {
   const location = useLocation();
   const [isNotifyOpen, setIsNotifyOpen] = useState(false);
   const sessionRecords = useSessionRecords();
+  const allPrescriptions = usePrescriptions();
+  const progress = usePatientProgress(PATIENT.id);
   const [planVoiceDialect, setPlanVoiceDialect] = useState<VoiceDialectPreference>(() =>
     readVoiceDialectPreference()
   );
@@ -43,6 +59,11 @@ export default function PatientPortal() {
   useEffect(() => {
     if (location.pathname !== '/patient') return;
     setPlanVoiceDialect(readVoiceDialectPreference());
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (location.pathname !== '/patient') return;
+    recordPatientOpen(PATIENT.id);
   }, [location.pathname]);
 
   useEffect(() => {
@@ -77,16 +98,20 @@ export default function PatientPortal() {
     { id: 12, title: '處方微調', body: '髖關節外展目標角度已調整為 35°，請依畫面提示練習。', time: '上週三' },
   ];
 
-  const prescriptions = mockPrescriptions.filter((p) => p.patientId === PATIENT.id && p.active);
+  const prescriptions = allPrescriptions.filter((p) => p.patientId === PATIENT.id && p.active);
   const exercises = mockExercises.map((exercise) => {
     const matchedRx = prescriptions.find((rx) => rx.exerciseId === exercise.id);
+    const plan = matchedRx ? resolvePrescriptionPlan(matchedRx, exercise) : null;
     return {
       id: matchedRx?.id ?? `AUTO-${exercise.id}`,
       exercise,
-      sets: matchedRx?.sets ?? exercise.sets,
-      reps: matchedRx?.reps ?? exercise.reps,
-      targetAngle: matchedRx?.targetAngle ?? exercise.targetAngle,
-      holdSeconds: matchedRx?.holdSeconds ?? exercise.holdSeconds,
+      sets: plan?.effectiveSets ?? exercise.sets,
+      reps: plan?.effectiveReps ?? exercise.reps,
+      targetAngle: plan?.effectiveTargetAngle ?? exercise.targetAngle,
+      tolerance: plan?.effectiveTolerance ?? exercise.tolerance,
+      holdSeconds: plan?.effectiveHoldSeconds ?? exercise.holdSeconds,
+      difficultyLevel: plan?.difficultyLevel ?? 2,
+      difficultyLabel: plan?.difficultyLabel ?? '標準',
       frequency: matchedRx?.frequency ?? '每天一次',
       source: matchedRx ? 'prescription' : 'catalog',
     };
@@ -134,12 +159,13 @@ export default function PatientPortal() {
     displayExercises.map((item, index) => [item.exercise.id, index])
   );
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayIsoDate();
   const todaySessions = sessionRecords.filter(
     s => s.patientId === PATIENT.id && s.date === today
   );
 
-  const plannedExerciseIds = new Set(displayExercises.map((item) => item.exercise.id));
+  const plannedExerciseIdList = displayExercises.map((item) => item.exercise.id);
+  const plannedExerciseIds = new Set(plannedExerciseIdList);
   const completedToday = new Set(
     todaySessions.filter((s) => plannedExerciseIds.has(s.exerciseId)).map((s) => s.exerciseId)
   ).size;
@@ -149,8 +175,10 @@ export default function PatientPortal() {
     todaySessions.reduce((sum, s) => sum + s.score, 0) / (todaySessions.length || 1)
   );
   const todayBestAngle = Math.max(...todaySessions.map((s) => s.maxAngle), 0);
-  const streakDays = 7;
   const patientSessions = sessionRecords.filter(s => s.patientId === PATIENT.id);
+  const progressSummary = buildProgressSummary(progress, patientSessions, plannedExerciseIdList);
+  const plannedProgressKey = plannedExerciseIdList.join('|');
+  const streakDays = progressSummary.trainingStreak.days;
   const recentPatientSessions = [...patientSessions]
     .sort((a, b) => {
       const aOrder = displayExerciseOrder.get(a.exerciseId) ?? 999;
@@ -177,6 +205,42 @@ export default function PatientPortal() {
     99,
     Math.round((PATIENT.completionRate * 0.45) + (avgScore * 0.35) + (Math.min(avgAngle, 120) / 120) * 20)
   );
+  const totalLeaderboard = buildScoreLeaderboard(sessionRecords, mockPatients, {
+    window: 'all',
+    includeEmpty: true,
+  });
+  const weeklyLeaderboard = buildScoreLeaderboard(sessionRecords, mockPatients, {
+    window: 'week',
+    includeEmpty: true,
+  });
+  const todayLeaderboard = buildScoreLeaderboard(sessionRecords, mockPatients, {
+    window: 'today',
+    includeEmpty: true,
+  });
+  const myRank = totalLeaderboard.find((entry) => entry.patientId === PATIENT.id);
+  const myWeeklyRank = weeklyLeaderboard.find((entry) => entry.patientId === PATIENT.id);
+  const myTodayRank = todayLeaderboard.find((entry) => entry.patientId === PATIENT.id);
+  const previousRank = myRank && myRank.rank > 1 ? totalLeaderboard[myRank.rank - 2] : null;
+  const pointsToNextRank = previousRank && myRank
+    ? Math.max(0, previousRank.avgScore - myRank.avgScore)
+    : 0;
+  const personalBest = findPersonalBest(sessionRecords, PATIENT.id);
+  const patientAiSuggestions = prescriptions.map((rx) =>
+    buildAiDifficultySuggestion(
+      rx,
+      mockExercises.find((exercise) => exercise.id === rx.exerciseId),
+      sessionRecords
+    )
+  );
+  const primaryAiSuggestion =
+    patientAiSuggestions.find((item) => item.direction === 'increase' || item.direction === 'decrease') ??
+    patientAiSuggestions.find((item) => item.direction === 'maintain') ??
+    patientAiSuggestions[0];
+  const primaryAiTone = primaryAiSuggestion ? getSuggestionTone(primaryAiSuggestion.direction) : null;
+
+  useEffect(() => {
+    syncUnlockedBadges(PATIENT.id, patientSessions, plannedExerciseIdList);
+  }, [sessionRecords, plannedProgressKey]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] [&_.text-xs]:text-lg [&_.text-sm]:text-xl [&_.text-base]:text-2xl [&_.text-lg]:text-3xl [&_.text-xl]:text-3xl [&_.text-2xl]:text-4xl">
@@ -273,6 +337,98 @@ export default function PatientPortal() {
             </div>
 
             {/* 今日訓練計畫 + 近期訓練紀錄（整合置頂） */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-blue-100">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
+                    <Award className="text-amber-500" size={34} />
+                  </div>
+                  <div>
+                    <h3 className="text-3xl font-black text-gray-800">我的復健排名</h3>
+                    <p className="text-lg text-gray-500 mt-1">
+                      用自己的訓練分數累積進步，不需要和別人硬比較。
+                    </p>
+                  </div>
+                </div>
+                <div className="rounded-2xl bg-blue-50 px-5 py-4 text-center border border-blue-100">
+                  <div className="text-lg font-bold text-blue-500">目前排名</div>
+                  <div className="text-4xl font-black text-blue-700 tabular-nums">
+                    #{myRank?.rank ?? '--'}
+                    <span className="text-xl text-blue-400">/{totalLeaderboard.length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">
+                {[
+                  { label: '平均分數', value: myRank ? `${myRank.avgScore}分` : '--', tone: 'text-blue-700', bg: 'bg-blue-50' },
+                  { label: '本週排名', value: myWeeklyRank?.sessionCount ? `#${myWeeklyRank.rank}` : '待完成', tone: 'text-purple-700', bg: 'bg-purple-50' },
+                  { label: '今日排行', value: myTodayRank?.sessionCount ? `#${myTodayRank.rank}` : '尚未開始', tone: 'text-emerald-700', bg: 'bg-emerald-50' },
+                  { label: '個人最佳', value: personalBest ? `${personalBest.score}分` : '--', tone: 'text-amber-700', bg: 'bg-amber-50' },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-2xl border border-gray-100 p-4">
+                    <div className={`inline-flex px-3 py-1 rounded-lg text-base font-black ${item.bg} ${item.tone}`}>
+                      {item.label}
+                    </div>
+                    <div className="mt-3 text-3xl font-black text-gray-800 tabular-nums">{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3">
+                <p className="text-xl font-bold text-slate-700">
+                  {myRank?.rank === 1
+                    ? '你目前在最高階，保持穩定就很棒。'
+                    : pointsToNextRank > 0
+                      ? `再進步 ${pointsToNextRank} 分，就能往上一階。`
+                      : '完成下一次訓練，就會更新你的排名。'}
+                </p>
+                {personalBest && (
+                  <p className="text-lg text-slate-500 mt-1">
+                    目前最佳紀錄是 {personalBest.date} 的 {personalBest.score} 分。
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {primaryAiSuggestion && primaryAiTone && (
+              <div
+                className="bg-white p-6 rounded-[2rem] shadow-sm border"
+                style={{ borderColor: primaryAiTone.border }}
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border"
+                      style={{ background: primaryAiTone.bg, borderColor: primaryAiTone.border }}
+                    >
+                      <Brain size={34} style={{ color: primaryAiTone.text }} />
+                    </div>
+                    <div>
+                      <h3 className="text-3xl font-black text-gray-800">AI 復健觀察</h3>
+                      <p className="text-lg text-gray-500 mt-1">
+                        {primaryAiSuggestion.patientMessage}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl px-5 py-4 text-center border" style={{ background: primaryAiTone.bg, borderColor: primaryAiTone.border }}>
+                    <div className="text-lg font-bold" style={{ color: primaryAiTone.text }}>
+                      {primaryAiTone.label}
+                    </div>
+                    <div className="text-4xl font-black tabular-nums" style={{ color: primaryAiTone.text }}>
+                      {primaryAiSuggestion.confidence}%
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-slate-50 border border-slate-100 px-4 py-3">
+                  <p className="text-xl font-bold text-slate-700">
+                    {primaryAiSuggestion.exerciseName}：{primaryAiSuggestion.reason}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white p-5 sm:p-6 rounded-[1.75rem] shadow-sm border border-gray-100">
               <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 mb-5">
                 <div className="min-w-0">
@@ -377,9 +533,19 @@ export default function PatientPortal() {
                             <Play className="text-blue-600" size={32} fill="currentColor" strokeWidth={2.25} />
                           )}
                         </div>
-                        <p className="font-bold text-gray-800 text-[1.46rem] sm:text-[1.625rem] md:text-[1.95rem] leading-tight flex-1 min-w-0">
-                          {ex.name}
-                        </p>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-800 text-[1.46rem] sm:text-[1.625rem] md:text-[1.95rem] leading-tight">
+                            {ex.name}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="inline-flex rounded-full bg-white/85 border border-blue-100 px-3 py-1 text-base sm:text-lg font-black text-blue-700 shadow-sm">
+                              第 {item.difficultyLevel} 關 / {item.difficultyLabel}
+                            </span>
+                            <span className="inline-flex rounded-full bg-white/70 border border-slate-100 px-3 py-1 text-base sm:text-lg font-bold text-slate-600">
+                              {item.sets}組 x {item.reps}次
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </motion.button>
                   );
@@ -412,6 +578,98 @@ export default function PatientPortal() {
             </div>
 
             {/* 近期復健 */}
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-amber-100">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-5">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-orange-50 border border-orange-100 flex items-center justify-center shrink-0">
+                    <Flame className="text-orange-500" size={34} />
+                  </div>
+                  <div>
+                    <h3 className="text-3xl font-black text-gray-800">我的成就</h3>
+                    <p className="text-lg text-gray-500 mt-1">
+                      {progressSummary.trainingStreak.message}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3 md:min-w-[30rem]">
+                  <div className="rounded-2xl bg-orange-50 border border-orange-100 px-4 py-3 text-center">
+                    <div className="text-base font-black text-orange-600">連續訓練</div>
+                    <div className="text-4xl font-black text-orange-700 tabular-nums">{streakDays}天</div>
+                  </div>
+                  <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-4 py-3 text-center">
+                    <div className="text-base font-black text-emerald-600">打開 App</div>
+                    <div className="text-4xl font-black text-emerald-700 tabular-nums">
+                      {progressSummary.openedDays}天
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-sky-50 border border-sky-100 px-4 py-3 text-center">
+                    <div className="text-base font-black text-sky-600">補救券</div>
+                    <div className="text-4xl font-black text-sky-700 tabular-nums">
+                      {progressSummary.trainingStreak.availableRescueTokens}張
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {progressSummary.trainingStreak.usedRescueTokens > 0 && (
+                <div className="mb-4 rounded-2xl bg-sky-50 border border-sky-100 px-4 py-3">
+                  <p className="text-xl font-bold text-sky-700">
+                    已使用 {progressSummary.trainingStreak.usedRescueTokens} 張補救券，連續紀錄保住了。
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {progressSummary.badges.map((badge) => {
+                  const progressPercent = Math.min(100, Math.round((badge.current / badge.target) * 100));
+                  return (
+                    <div
+                      key={badge.id}
+                      className={`rounded-2xl border p-4 transition-all ${
+                        badge.unlocked
+                          ? 'border-amber-100 bg-gradient-to-br from-white to-amber-50/80 shadow-sm'
+                          : 'border-gray-100 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className={`inline-flex px-3 py-1 rounded-lg text-base font-black ${badge.bg} ${badge.color}`}>
+                            {badge.unlocked ? '已解鎖' : '挑戰中'}
+                          </div>
+                          <h4 className="text-2xl font-black text-gray-800 mt-3">{badge.title}</h4>
+                          <p className="text-lg text-gray-500 mt-1">{badge.description}</p>
+                        </div>
+                        <div
+                          className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                            badge.unlocked ? 'bg-amber-100 text-amber-600' : 'bg-white text-gray-300'
+                          }`}
+                        >
+                          <Award size={26} />
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-base font-bold text-gray-500 mb-2">
+                          <span>{badge.unlocked ? '完成' : badge.lockedHint}</span>
+                          <span className="tabular-nums">{badge.progressLabel}</span>
+                        </div>
+                        <div className="h-3 bg-white rounded-full overflow-hidden border border-gray-100">
+                          <div
+                            className={`h-full rounded-full ${badge.unlocked ? 'bg-amber-400' : 'bg-blue-400'}`}
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <p className={`text-lg font-bold mt-4 ${badge.unlocked ? 'text-amber-700' : 'text-gray-500'}`}>
+                        {badge.unlocked ? badge.encouragement : badge.lockedHint}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-2xl font-bold text-gray-700">近期復健</h4>

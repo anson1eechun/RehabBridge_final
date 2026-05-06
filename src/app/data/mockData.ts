@@ -57,6 +57,8 @@ export interface Exercise {
   difficulty: 'easy' | 'medium' | 'hard';
 }
 
+export type DifficultyLevel = 1 | 2 | 3 | 4 | 5;
+
 export interface Prescription {
   id: string;
   patientId: string;
@@ -66,6 +68,7 @@ export interface Prescription {
   reps: number;
   sets: number;
   holdSeconds: number;
+  difficultyLevel?: DifficultyLevel;
   frequency: string;
   notes: string;
   startDate: string;

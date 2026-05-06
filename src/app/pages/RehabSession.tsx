@@ -31,8 +31,10 @@ import {
   getJointTripletConfidence,
   type JointRef,
 } from '../utils/angleCalculator';
-import { mockExercises, mockPrescriptions } from '../data/mockData';
+import { mockExercises } from '../data/mockData';
 import { appendSessionRecord } from '../data/sessionStore';
+import { getTodayIsoDate, recordTrainingCompletion } from '../data/progressStore';
+import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
 import { readVoiceDialectPreference } from '../utils/voiceDialectPreference';
 import {
   formatSecondsSpokenZh,
@@ -75,21 +77,26 @@ export default function RehabSession() {
   const sessionSavedRef = useRef(false);
   const voiceFeedbackCountRef = useRef(0);
   const goalBriefAnnouncedRef = useRef(false);
+  const prescriptions = usePrescriptions();
 
   // Resolve exercise + prescription
   const exercise = mockExercises.find(e => e.id === exerciseId);
-  const prescription = mockPrescriptions.find(
+  const prescription = prescriptions.find(
     p => p.patientId === PATIENT_ID && p.exerciseId === exerciseId
   );
-  const targetAngle = prescription?.targetAngle ?? exercise?.targetAngle ?? 90;
-  const tolerance = exercise?.tolerance ?? 10;
-  const totalSets = prescription?.sets ?? exercise?.sets ?? 3;
-  const totalReps = prescription?.reps ?? exercise?.reps ?? 10;
-  const holdSeconds = prescription?.holdSeconds ?? exercise?.holdSeconds ?? 3;
+  const prescriptionPlan = prescription && exercise
+    ? resolvePrescriptionPlan(prescription, exercise)
+    : null;
+  const difficultyLevel = prescriptionPlan?.difficultyLevel ?? 2;
+  const difficultyLabel = prescriptionPlan?.difficultyLabel ?? '標準';
+  const targetAngle = prescriptionPlan?.effectiveTargetAngle ?? exercise?.targetAngle ?? 90;
+  const tolerance = prescriptionPlan?.effectiveTolerance ?? exercise?.tolerance ?? 10;
+  const totalSets = prescriptionPlan?.effectiveSets ?? exercise?.sets ?? 3;
+  const totalReps = prescriptionPlan?.effectiveReps ?? exercise?.reps ?? 10;
+  const holdSeconds = prescriptionPlan?.effectiveHoldSeconds ?? exercise?.holdSeconds ?? 3;
 
-  // Senior-friendly mode: lower threshold so movements are easier to complete.
-  const effectiveTolerance = Math.max(tolerance, 15);
-  const effectiveHoldSeconds = Math.max(1, Math.min(holdSeconds, 2));
+  const effectiveTolerance = tolerance;
+  const effectiveHoldSeconds = holdSeconds;
   const repRearmMargin = 6;
 
   // Pose detection hook
@@ -520,10 +527,12 @@ export default function RehabSession() {
     const angleAccuracy = Math.max(0, 100 - Math.abs(targetAngle - avgAngle) * 2);
     const score = Math.max(0, Math.min(100, Math.round(angleAccuracy * 0.8 + 20)));
 
+    const completedDate = getTodayIsoDate();
+
     appendSessionRecord({
       patientId: PATIENT_ID,
       exerciseId,
-      date: new Date().toISOString().split('T')[0],
+      date: completedDate,
       duration: elapsedMinutes,
       completedSets: totalSets,
       completedReps: totalReps,
@@ -533,6 +542,7 @@ export default function RehabSession() {
       score,
       voiceFeedbackCount: voiceFeedbackCountRef.current,
     });
+    recordTrainingCompletion(PATIENT_ID, { date: completedDate, score });
     sessionSavedRef.current = true;
   }, [exerciseId, sessionComplete, targetAngle, totalReps, totalSets]);
 
@@ -1090,6 +1100,7 @@ export default function RehabSession() {
               今天這樣練
             </div>
             {[
+              { label: '關卡難度', value: `第 ${difficultyLevel} 關 / ${difficultyLabel}`, color: '#81D4FA' },
               { label: '目標角度', value: `${targetAngle}°`, color: '#FFD600' },
               { label: '容許誤差', value: `±${effectiveTolerance}°`, color: 'rgba(255,255,255,0.6)' },
               { label: '保持時間', value: `${effectiveHoldSeconds} 秒`, color: 'rgba(255,255,255,0.6)' },
