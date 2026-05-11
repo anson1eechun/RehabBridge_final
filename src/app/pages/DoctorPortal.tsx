@@ -1,0 +1,967 @@
+// ============================================================
+// DoctorPortal — 醫師端 (功能增強版：保留原色調與數據)
+// ============================================================
+
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router';
+import {
+  ArrowLeft, Users, Activity, BarChart3, Settings,
+  ChevronRight, Target, Plus, Edit3, TrendingUp,
+  AlertCircle, CheckCircle, Clock, Stethoscope, Save, X, Trophy, Brain
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis,
+  Tooltip, CartesianGrid, LineChart, Line, ReferenceLine,
+  PieChart, Pie, Cell, Legend
+} from 'recharts';
+import {
+  mockPatients, mockExercises,
+  mockDoctors, mockSystemStats, mockCategoryStats, mockAlertStats
+} from '../data/mockData';
+import { useSessionRecords } from '../data/sessionStore';
+import { buildScoreLeaderboard } from '../data/sessionStore';
+import {
+  createPrescription,
+  DIFFICULTY_LEVELS,
+  getDifficultyMeta,
+  normalizeDifficultyLevel,
+  resolvePrescriptionPlan,
+  updatePrescription,
+  usePrescriptions,
+  type PrescriptionEditableFields,
+} from '../data/prescriptionStore';
+import { buildAiDifficultySuggestion, getSuggestionTone } from '../data/aiDifficultyEngine';
+
+const DOCTOR = mockDoctors[0];
+
+export default function DoctorPortal() {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'patients' | 'analytics' | 'prescriptions'>('patients');
+  const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
+  const [editingRx, setEditingRx] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<PrescriptionEditableFields>({
+    targetAngle: 90,
+    reps: 10,
+    sets: 3,
+    holdSeconds: 3,
+    difficultyLevel: 2,
+  });
+
+  // --- 新增：處理「新增處方」彈窗的狀態 ---
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [newRx, setNewRx] = useState({
+    exerciseId: 'knee_flexion',
+    targetAngle: 90,
+    reps: 10,
+    sets: 3,
+    holdSeconds: 3,
+    difficultyLevel: 2,
+  });
+  const sessionRecords = useSessionRecords();
+  const prescriptions = usePrescriptions();
+
+  const patients = mockPatients.filter(p => p.doctorId === DOCTOR.id);
+
+  const analyticsData = [
+    { name: '王大明', compliance: 85, avgAngle: 118, target: 120, score: 89 },
+    { name: '李秀英', compliance: 72, avgAngle: 85, target: 90, score: 82 },
+    { name: '陳阿蘭', compliance: 45, avgAngle: 65, target: 90, score: 61 },
+    { name: '林志華', compliance: 78, avgAngle: 92, target: 95, score: 87 },
+    { name: '郭美玲', compliance: 69, avgAngle: 99, target: 105, score: 79 },
+    { name: '吳建成', compliance: 58, avgAngle: 70, target: 90, score: 68 },
+  ];
+
+  const radarData = [
+    { metric: '完成率', A: 85, B: 72, C: 45 },
+    { metric: '角度達標', A: 92, B: 78, C: 52 },
+    { metric: '訓練分數', A: 89, B: 82, C: 61 },
+    { metric: '連續天數', A: 95, B: 68, C: 40 },
+    { metric: '語音反應', A: 80, B: 75, C: 55 },
+  ];
+
+  const avgCompliance = Math.round(analyticsData.reduce((sum, item) => sum + item.compliance, 0) / analyticsData.length);
+  const avgScore = Math.round(analyticsData.reduce((sum, item) => sum + item.score, 0) / analyticsData.length);
+  const avgAngleGap = Math.round(
+    analyticsData.reduce((sum, item) => sum + Math.abs(item.target - item.avgAngle), 0) / analyticsData.length
+  );
+  const highRiskCount = analyticsData.filter(item => item.compliance < 60 || item.score < 70).length;
+  const activeRxCount = prescriptions.filter((rx) => rx.active).length;
+  const avgSessionDuration = Math.round(
+    sessionRecords.reduce((sum, session) => sum + session.duration, 0) / (sessionRecords.length || 1)
+  );
+  const prescriptionCoverage = Math.round((activeRxCount / (patients.length * 2 || 1)) * 100);
+
+  const weeklyTrendData = [
+    { week: 'W1', completion: 62, score: 72, targetReached: 54 },
+    { week: 'W2', completion: 68, score: 76, targetReached: 61 },
+    { week: 'W3', completion: 70, score: 79, targetReached: 66 },
+    { week: 'W4', completion: 74, score: 82, targetReached: 71 },
+    { week: 'W5', completion: avgCompliance, score: avgScore, targetReached: 75 },
+  ];
+
+  const riskDistribution = [
+    { name: '低風險', value: analyticsData.filter(item => item.compliance >= 80 && item.score >= 85).length, color: '#66BB6A' },
+    { name: '中風險', value: analyticsData.filter(item => item.compliance >= 60 && item.compliance < 80).length, color: '#FFA726' },
+    { name: '高風險', value: analyticsData.filter(item => item.compliance < 60 || item.score < 70).length, color: '#EF5350' },
+  ];
+
+  const patientInsights = analyticsData
+    .map((item) => ({
+      ...item,
+      gap: item.target - item.avgAngle,
+      risk: item.compliance < 60 || item.score < 70 ? 'high' : item.compliance < 80 ? 'medium' : 'low',
+    }))
+    .sort((a, b) => {
+      const riskScore = (r: string) => (r === 'high' ? 3 : r === 'medium' ? 2 : 1);
+      return riskScore(b.risk) - riskScore(a.risk);
+    });
+
+  const categoryComparison = mockCategoryStats.map((c) => ({
+    category: c.category,
+    completion: c.avgCompletion,
+    dropRate: Math.round(c.dropRate),
+    duration: Math.round(c.avgDuration),
+  }));
+
+  const alertHotspots = [
+    { type: '角度不足', value: mockAlertStats.insufficientAngle, color: '#FB8C00' },
+    { type: '速度過快', value: mockAlertStats.excessiveSpeed, color: '#8E24AA' },
+    { type: '姿勢偏移', value: mockAlertStats.postureDistortion, color: '#E53935' },
+    { type: '成功達標', value: mockAlertStats.targetReached, color: '#43A047' },
+  ];
+
+  const selectedPatientData = selectedPatient ? mockPatients.find(p => p.id === selectedPatient) : null;
+  const selectedPrescriptions = selectedPatient ? prescriptions.filter(p => p.patientId === selectedPatient) : [];
+  const selectedSessions = selectedPatient ? sessionRecords.filter(s => s.patientId === selectedPatient) : [];
+  const newRxDifficulty = getDifficultyMeta(newRx.difficultyLevel);
+  const editDifficulty = getDifficultyMeta(editValues.difficultyLevel);
+  const totalLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'all',
+    includeEmpty: true,
+  });
+  const todayLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'today',
+    includeEmpty: false,
+  });
+  const weeklyLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
+    window: 'week',
+    includeEmpty: false,
+  });
+  const personalBestLeaderboard = [...totalLeaderboard]
+    .filter((entry) => entry.bestScore > 0)
+    .sort((a, b) => b.bestScore - a.bestScore)
+    .slice(0, 5);
+
+  const leaderboardSections = [
+    {
+      title: '今日排行',
+      subtitle: '今日平均分',
+      entries: todayLeaderboard.slice(0, 5),
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.avgScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => `${entry.sessionCount} 次訓練`,
+    },
+    {
+      title: '本週排行',
+      subtitle: '週平均分 + 完成次數',
+      entries: weeklyLeaderboard.slice(0, 5),
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.avgScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => `${entry.sessionCount} 次完成`,
+    },
+    {
+      title: '個人最佳',
+      subtitle: '患者最高單次分數',
+      entries: personalBestLeaderboard,
+      value: (entry: typeof totalLeaderboard[number]) => `${entry.bestScore}分`,
+      detail: (entry: typeof totalLeaderboard[number]) => entry.lastSessionDate || '尚無紀錄',
+    },
+  ];
+
+  const handleEditRx = (rxId: string) => {
+    const rx = prescriptions.find(p => p.id === rxId);
+    if (rx) {
+      setEditValues({
+        targetAngle: rx.targetAngle,
+        reps: rx.reps,
+        sets: rx.sets,
+        holdSeconds: rx.holdSeconds,
+        difficultyLevel: rx.difficultyLevel ?? 2,
+      });
+      setEditingRx(rxId);
+    }
+  };
+
+  const handleSaveRx = () => {
+    if (!editingRx) return;
+    updatePrescription(editingRx, editValues);
+    setEditingRx(null);
+  };
+
+  const handleApplyAiSuggestion = (rxId: string, difficultyLevel: number) => {
+    const rx = prescriptions.find((item) => item.id === rxId);
+    const currentLevel = normalizeDifficultyLevel(rx?.difficultyLevel ?? 2);
+    const suggestedLevel = normalizeDifficultyLevel(difficultyLevel);
+    const conservativeLevel =
+      suggestedLevel > currentLevel
+        ? normalizeDifficultyLevel(currentLevel + 1)
+        : suggestedLevel;
+
+    updatePrescription(rxId, {
+      difficultyLevel: conservativeLevel,
+    });
+    setEditingRx(null);
+  };
+
+  const handleAddPrescription = () => {
+    if (!selectedPatient) return;
+    const exercise = mockExercises.find((ex) => ex.id === newRx.exerciseId);
+    const existingRx = prescriptions.find(
+      (rx) =>
+        rx.patientId === selectedPatient &&
+        rx.exerciseId === newRx.exerciseId &&
+        rx.active
+    );
+    const values = {
+      targetAngle: newRx.targetAngle || exercise?.targetAngle || 90,
+      reps: newRx.reps || exercise?.reps || 10,
+      sets: newRx.sets || exercise?.sets || 3,
+      holdSeconds: newRx.holdSeconds || exercise?.holdSeconds || 3,
+      difficultyLevel: normalizeDifficultyLevel(newRx.difficultyLevel),
+    };
+
+    if (existingRx) {
+      updatePrescription(existingRx.id, values);
+      setIsAddModalOpen(false);
+      return;
+    }
+
+    createPrescription({
+      patientId: selectedPatient,
+      doctorId: DOCTOR.id,
+      exerciseId: newRx.exerciseId,
+      ...values,
+      frequency: '每天兩次',
+      notes: '醫師新增復健處方',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: '2026-12-31',
+      active: true,
+    });
+    setIsAddModalOpen(false);
+  };
+
+  return (
+    <div className="min-h-screen relative" style={{ background: '#F4F7FC' }}>
+      
+      {/* ── 新增處方彈出視窗 (Modal) ── */}
+      <AnimatePresence>
+        {isAddModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.4)' }}>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm rounded-3xl p-6 shadow-2xl" 
+              style={{ background: 'white' }}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold" style={{ color: '#5E35B1' }}>新增復健處方</h3>
+                <button onClick={() => setIsAddModalOpen(false)} className="text-gray-400"><X size={20} /></button>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="text-xs font-bold text-gray-400 block mb-1">運動項目</label>
+                  <select 
+                    className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50 font-bold text-gray-700"
+                    value={newRx.exerciseId}
+                    onChange={(e) => setNewRx({...newRx, exerciseId: e.target.value})}
+                  >
+                    {mockExercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">目標角度 (°)</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50" 
+                      value={newRx.targetAngle} onChange={(e) => setNewRx({...newRx, targetAngle: parseInt(e.target.value)})}/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">每組次數</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
+                      value={newRx.reps} onChange={(e) => setNewRx({...newRx, reps: parseInt(e.target.value)})}/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">組數</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
+                      value={newRx.sets} onChange={(e) => setNewRx({...newRx, sets: parseInt(e.target.value)})}/>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-400 block mb-1">保持秒數</label>
+                    <input type="number" className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50"
+                      value={newRx.holdSeconds} onChange={(e) => setNewRx({...newRx, holdSeconds: parseInt(e.target.value)})}/>
+                  </div>
+                </div>
+                <div className="rounded-2xl p-4 bg-purple-50 border border-purple-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-xs font-bold text-purple-700 block">關卡難度</label>
+                    <span className="text-sm font-black text-purple-800">
+                      第 {newRxDifficulty.level} 關 / {newRxDifficulty.label}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={newRx.difficultyLevel}
+                    onChange={(e) =>
+                      setNewRx({
+                        ...newRx,
+                        difficultyLevel: normalizeDifficultyLevel(e.target.value),
+                      })
+                    }
+                    className="w-full accent-purple-700"
+                  />
+                  <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+                    {DIFFICULTY_LEVELS.map((item) => (
+                      <span
+                        key={item.level}
+                        className={`text-[10px] font-bold ${
+                          item.level === newRxDifficulty.level ? 'text-purple-800' : 'text-purple-300'
+                        }`}
+                      >
+                        {item.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs font-semibold text-purple-500 mt-2">{newRxDifficulty.tone}</p>
+                  <p className="text-[11px] font-semibold text-purple-500 mt-1">
+                    系統會依目標角度產生安全範圍；AI 只提供調整建議，需由醫師確認後才會套用。
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => setIsAddModalOpen(false)} className="flex-1 py-3 rounded-xl font-bold text-gray-400 bg-gray-100">取消</button>
+                <button 
+                  onClick={handleAddPrescription}
+                  className="flex-1 py-3 rounded-xl font-bold text-white shadow-lg" 
+                  style={{ background: '#5E35B1' }}
+                >
+                  確認儲存
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Top Bar（頂部與家屬端：圓框返回鈕 + 單行標題） */}
+      <div style={{ background: 'linear-gradient(135deg, #7E57C2 0%, #5E35B1 100%)' }}>
+        <div className="pt-8 pb-6 px-8">
+          <div className="max-w-7xl mx-auto">
+            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+              <button
+                type="button"
+                onClick={() => navigate('/')}
+                className="flex flex-nowrap items-center gap-2.5 text-white/85 hover:text-white mb-4 transition-colors text-2xl md:text-3xl font-bold min-h-[52px] w-fit rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-5 py-2.5 active:scale-[0.98] -ml-1"
+              >
+                <ArrowLeft size={30} strokeWidth={2.5} className="shrink-0" aria-hidden />
+                <span className="whitespace-nowrap">返回</span>
+              </button>
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white backdrop-blur-md border border-white/30 bg-white/20 shrink-0">
+                  <Stethoscope size={28} className="text-white" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 overflow-x-auto">
+                  <h1 className="text-white text-2xl md:text-3xl font-bold leading-tight whitespace-nowrap">
+                    <span className="text-white/65 font-semibold">復健科主治醫師</span>
+                    {' '}
+                    Dr. {DOCTOR.name}
+                  </h1>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* System Stats */}
+            <div className="grid grid-cols-4 gap-3 mt-6">
+            {[
+              { label: '管理患者', value: patients.length, suffix: '位' },
+              { label: '平均完成率', value: Math.round(mockSystemStats.avgCompletionRate), suffix: '%' },
+              { label: '累計訓練', value: mockSystemStats.totalSessions, suffix: '次' },
+              { label: '平均分數', value: Math.round(mockSystemStats.avgScore), suffix: '分' },
+            ].map(stat => (
+              <div key={stat.label} className="rounded-xl p-3 text-center"
+                style={{ background: 'rgba(255,255,255,0.15)' }}>
+                <div style={{ color: 'white', fontSize: 20, fontWeight: 700 }}>
+                  {stat.value}<span style={{ fontSize: 13 }}>{stat.suffix}</span>
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{stat.label}</div>
+              </div>
+            ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pb-10" style={{ marginTop: -12 }}>
+        {/* Tab Nav */}
+        <div className="flex gap-1 mb-5 p-1 rounded-xl shadow-sm" style={{ background: 'white' }}>
+          {[
+            { id: 'patients', label: '患者管理', icon: Users },
+            { id: 'analytics', label: '數據分析', icon: BarChart3 },
+            { id: 'prescriptions', label: '處方設定', icon: Target },
+          ].map(tab => {
+            const Icon = tab.icon;
+            return (
+              <button key={tab.id}
+                onClick={() => { setActiveTab(tab.id as any); setSelectedPatient(null); }}
+                className="flex-1 py-3 rounded-lg flex items-center justify-center gap-2 transition-all"
+                style={{
+                  background: activeTab === tab.id ? '#5E35B1' : 'transparent',
+                  color: activeTab === tab.id ? 'white' : '#90A4AE',
+                  fontSize: 14, fontWeight: 600,
+                }}>
+                <Icon size={16} /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Patients Tab ─────────────────────────────── */}
+        {activeTab === 'patients' && (
+          <div>
+            {!selectedPatient ? (
+              <div className="flex flex-col gap-3">
+                {patients.map((patient, i) => (
+                  <motion.button
+                    key={patient.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.07 }}
+                    onClick={() => setSelectedPatient(patient.id)}
+                    className="w-full rounded-2xl p-5 text-left shadow-sm hover:shadow-md transition-all"
+                    style={{ background: 'white' }}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #7B1FA2, #4A148C)', fontSize: 20, color: 'white', fontWeight: 700 }}>
+                        {patient.avatar}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <span style={{ fontSize: 17, fontWeight: 700, color: '#1A2035' }}>{patient.name}</span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                            style={{
+                              background: patient.completionRate >= 80 ? '#E8F5E9' : patient.completionRate >= 60 ? '#FFF3E0' : '#FFEBEE',
+                              color: patient.completionRate >= 80 ? '#2E7D32' : patient.completionRate >= 60 ? '#E65100' : '#C62828',
+                            }}>
+                            完成率 {patient.completionRate}%
+                          </span>
+                        </div>
+                        <p style={{ fontSize: 13, color: '#546E7A' }}>
+                          {patient.age}歲 · {patient.gender} · {patient.diagnosis}
+                        </p>
+                        <div className="flex items-center gap-3 mt-2">
+                          <span style={{ fontSize: 12, color: '#90A4AE' }}>
+                            <Clock size={12} style={{ display: 'inline', marginRight: 3 }} />
+                            最後訓練 {patient.lastSessionDate}
+                          </span>
+                        </div>
+                        <div className="mt-2 w-full rounded-full h-2" style={{ background: '#EEF2F7' }}>
+                          <div className="h-2 rounded-full transition-all"
+                            style={{
+                              width: `${patient.completionRate}%`,
+                              background: patient.completionRate >= 80 ? '#43A047' : patient.completionRate >= 60 ? '#FB8C00' : '#E53935'
+                            }} />
+                        </div>
+                      </div>
+                      <ChevronRight size={20} style={{ color: '#B0BEC5' }} />
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+            ) : (
+              <div>
+                <button onClick={() => setSelectedPatient(null)}
+                  className="flex items-center gap-2 mb-4 text-purple-700 hover:text-purple-900 transition-colors">
+                  <ArrowLeft size={16} /> 返回患者列表
+                </button>
+
+                {selectedPatientData && (
+                  <div className="flex flex-col gap-4">
+                    <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                          style={{ background: 'linear-gradient(135deg, #7B1FA2, #4A148C)', fontSize: 24, color: 'white', fontWeight: 700 }}>
+                          {selectedPatientData.avatar}
+                        </div>
+                        <div>
+                          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A2035' }}>{selectedPatientData.name}</h2>
+                          <p style={{ fontSize: 14, color: '#546E7A' }}>{selectedPatientData.age}歲 · {selectedPatientData.diagnosis}</p>
+                          <p style={{ fontSize: 13, color: '#90A4AE', marginTop: 2 }}>家屬聯絡：{selectedPatientData.familyContact}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035' }}>目前處方</h3>
+                        <button 
+                          onClick={() => setIsAddModalOpen(true)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm"
+                          style={{ background: '#EDE7F6', color: '#4A148C' }}>
+                          <Plus size={14} /> 新增處方
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-3">
+                        {selectedPrescriptions.map(rx => {
+                          const ex = mockExercises.find(e => e.id === rx.exerciseId);
+                          const isEditing = editingRx === rx.id;
+                          const plan = resolvePrescriptionPlan(rx, ex);
+                          const aiSuggestion = buildAiDifficultySuggestion(rx, ex, sessionRecords);
+                          const aiTone = getSuggestionTone(aiSuggestion.direction);
+                          const canApplyAiSuggestion =
+                            aiSuggestion.direction === 'increase' || aiSuggestion.direction === 'decrease';
+                          return (
+                            <div key={rx.id} className="rounded-xl p-4"
+                              style={{ background: '#F8F4FF', border: '1px solid #E1D5FF' }}>
+                              <div className="flex items-start justify-between mb-3">
+                                <div>
+                                  <span style={{ fontSize: 15, fontWeight: 700, color: '#1A2035' }}>{ex?.name}</span>
+                                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs" style={{ background: '#EDE7F6', color: '#7B1FA2' }}>{rx.frequency}</span>
+                                </div>
+                                <button onClick={() => isEditing ? setEditingRx(null) : handleEditRx(rx.id)} className="p-1.5 rounded-lg hover:bg-purple-100"><Edit3 size={15} style={{ color: '#7B1FA2' }} /></button>
+                              </div>
+                              {isEditing ? (
+                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                                  <div className="grid grid-cols-4 gap-3 mb-3">
+                                    {[
+                                      { label: '目標角度', key: 'targetAngle' },
+                                      { label: '每組次數', key: 'reps' },
+                                      { label: '組數', key: 'sets' },
+                                      { label: '保持秒數', key: 'holdSeconds' },
+                                    ].map(field => (
+                                      <div key={field.key}>
+                                        <label className="text-[10px] text-gray-400 block mb-1">{field.label}</label>
+                                        <input type="number" value={editValues[field.key as keyof typeof editValues]} onChange={e => setEditValues(prev => ({ ...prev, [field.key]: parseInt(e.target.value) }))} className="w-full rounded-lg px-2 py-2 border border-purple-200 text-sm font-bold text-purple-700"/>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="rounded-xl p-3 bg-white border border-purple-100 mb-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className="text-[10px] text-purple-500 font-bold">關卡難度</span>
+                                      <span className="text-xs text-purple-800 font-black">
+                                        第 {editDifficulty.level} 關 / {editDifficulty.label}
+                                      </span>
+                                    </div>
+                                    <input
+                                      type="range"
+                                      min={1}
+                                      max={5}
+                                      step={1}
+                                      value={editValues.difficultyLevel}
+                                      onChange={(e) =>
+                                        setEditValues((prev) => ({
+                                          ...prev,
+                                          difficultyLevel: normalizeDifficultyLevel(e.target.value),
+                                        }))
+                                      }
+                                      className="w-full accent-purple-700"
+                                    />
+                                    <div className="mt-1 grid grid-cols-5 gap-1 text-center">
+                                      {DIFFICULTY_LEVELS.map((item) => (
+                                        <span
+                                          key={item.level}
+                                          className={`text-[10px] font-bold ${
+                                            item.level === editDifficulty.level ? 'text-purple-800' : 'text-purple-300'
+                                          }`}
+                                        >
+                                          {item.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <p className="text-[11px] text-purple-500 font-semibold mt-1">
+                                      實際訓練：{Math.max(5, Math.min(175, editValues.targetAngle + editDifficulty.targetAngleDelta))}° ·
+                                      {editValues.sets + editDifficulty.setsDelta}組 x {editValues.reps + editDifficulty.repsDelta}次 ·
+                                      保持 {editValues.holdSeconds + editDifficulty.holdSecondsDelta} 秒
+                                    </p>
+                                  </div>
+                                  <button onClick={handleSaveRx} className="w-full py-2 rounded-lg text-white font-bold text-xs" style={{ background: '#4A148C' }}><Save size={12} className="inline mr-1" />儲存</button>
+                                </motion.div>
+                              ) : (
+                                <>
+                                <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-purple-700 border border-purple-100">
+                                  第 {plan.difficultyLevel} 關 / {plan.difficultyLabel}
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                                  {[
+                                    { label: '角度', value: `${plan.effectiveTargetAngle}°` },
+                                    { label: '誤差', value: `±${plan.effectiveTolerance}°` },
+                                    { label: '組數', value: `${plan.effectiveSets}組` },
+                                    { label: '次數', value: `${plan.effectiveReps}次` },
+                                    { label: '保持', value: `${plan.effectiveHoldSeconds}s` },
+                                    { label: '安全', value: `${plan.safetyMinAngle}°-${plan.safetyMaxAngle}°` },
+                                  ].map(item => (
+                                    <div key={item.label} className="rounded-lg p-2 text-center bg-white">
+                                      <div style={{ fontSize: 13, fontWeight: 700, color: '#4A148C' }}>{item.value}</div>
+                                      <div style={{ fontSize: 10, color: '#90A4AE' }}>{item.label}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">
+                                  安全範圍：{plan.safetyMinAngle}°-{plan.safetyMaxAngle}°。疼痛 7/10 以上會先暫停訓練並通知照護團隊。
+                                </p>
+                                </>
+                              )}
+                              <div
+                                className="mt-3 rounded-xl border p-3"
+                                style={{ background: aiTone.bg, borderColor: aiTone.border }}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-start gap-2">
+                                    <Brain size={17} style={{ color: aiTone.text, marginTop: 2 }} />
+                                    <div>
+                                      <div className="text-xs font-black" style={{ color: aiTone.text }}>
+                                        AI 建議（需醫師確認） · {aiTone.label} · 信心度 {aiSuggestion.confidence}%
+                                      </div>
+                                      <p className="text-xs font-bold mt-1" style={{ color: '#374151', lineHeight: 1.45 }}>
+                                        {aiSuggestion.doctorSummary}
+                                      </p>
+                                      <p className="text-[11px] mt-1" style={{ color: '#6B7280', lineHeight: 1.45 }}>
+                                        {aiSuggestion.reason}
+                                      </p>
+                                      <p className="text-[11px] mt-1" style={{ color: '#6B7280', lineHeight: 1.45 }}>
+                                        系統不會自動調整處方；升階最多一次提高 1 關。
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {canApplyAiSuggestion && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApplyAiSuggestion(rx.id, aiSuggestion.suggestedLevel)}
+                                      className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white"
+                                      style={{ background: aiTone.text }}
+                                    >
+                                      醫師確認
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Analytics Tab (保留完整 Recharts) ── */}
+        {activeTab === 'analytics' && (
+          <div className="flex flex-col gap-5">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {[
+                { label: '平均完成率', value: `${avgCompliance}%`, tone: '#5E35B1', bg: '#F3E5F5' },
+                { label: '平均訓練分數', value: `${avgScore}分`, tone: '#1976D2', bg: '#E3F2FD' },
+                { label: '平均角度差距', value: `${avgAngleGap}°`, tone: '#EF6C00', bg: '#FFF3E0' },
+                { label: '高風險個案', value: `${highRiskCount}位`, tone: '#C62828', bg: '#FFEBEE' },
+                { label: '處方覆蓋率', value: `${prescriptionCoverage}%`, tone: '#00897B', bg: '#E0F2F1' },
+                { label: '平均單次時長', value: `${avgSessionDuration}分`, tone: '#6D4C41', bg: '#EFEBE9' },
+              ].map((kpi) => (
+                <div key={kpi.label} className="rounded-2xl p-4 shadow-sm" style={{ background: 'white' }}>
+                  <div className="inline-flex px-2 py-1 rounded-lg mb-2 text-xs font-bold" style={{ color: kpi.tone, background: kpi.bg }}>
+                    {kpi.label}
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: '#1A2035' }}>{kpi.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="flex items-center gap-2" style={{ fontSize: 18, fontWeight: 800, color: '#1A2035' }}>
+                    <Trophy size={20} style={{ color: '#F59E0B' }} />
+                    復健分數排行榜
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#78909C', marginTop: 4 }}>
+                    依照訓練分數自動統計，協助醫師快速掌握努力程度與復健表現。
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: '#FFF7ED', color: '#C2410C' }}>
+                  Score Leaderboard
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {leaderboardSections.map((section) => (
+                  <div key={section.title} className="rounded-2xl p-4 border" style={{ borderColor: '#EEF2F7', background: '#FAFBFD' }}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: '#1A2035' }}>{section.title}</div>
+                        <div style={{ fontSize: 12, color: '#90A4AE', marginTop: 2 }}>{section.subtitle}</div>
+                      </div>
+                    </div>
+
+                    {section.entries.length > 0 ? (
+                      <div className="space-y-2">
+                        {section.entries.map((entry) => (
+                          <div key={`${section.title}-${entry.patientId}`} className="flex items-center gap-3 rounded-xl bg-white px-3 py-3 border border-gray-100">
+                            <div
+                              className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black"
+                              style={{
+                                background: entry.rank === 1 ? '#FEF3C7' : entry.rank === 2 ? '#E0F2FE' : entry.rank === 3 ? '#FCE7F3' : '#F3F4F6',
+                                color: entry.rank === 1 ? '#B45309' : entry.rank === 2 ? '#0369A1' : entry.rank === 3 ? '#BE185D' : '#64748B',
+                              }}
+                            >
+                              {entry.rank}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold truncate" style={{ color: '#1A2035', fontSize: 14 }}>{entry.name}</div>
+                              <div style={{ color: '#90A4AE', fontSize: 12 }}>{section.detail(entry)}</div>
+                            </div>
+                            <div className="text-right font-black" style={{ color: '#5E35B1', fontSize: 18 }}>
+                              {section.value(entry)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl bg-white border border-dashed border-gray-200 p-4 text-center" style={{ color: '#94A3B8', fontSize: 13, fontWeight: 700 }}>
+                        尚無訓練紀錄
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-bold" style={{ color: '#4A148C', fontSize: 15 }}>全患者總排行</span>
+                  <span style={{ color: '#7E57C2', fontSize: 12, fontWeight: 700 }}>依平均分數排序</span>
+                </div>
+                <div className="space-y-2">
+                  {totalLeaderboard.slice(0, 6).map((entry) => (
+                    <div key={`total-${entry.patientId}`} className="grid grid-cols-[44px_1fr_72px_72px_88px] items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm">
+                      <span className="font-black text-purple-700">#{entry.rank}</span>
+                      <span className="font-bold text-gray-700 truncate">{entry.name}</span>
+                      <span className="font-bold text-gray-500 text-right">{entry.avgScore}分</span>
+                      <span className="font-bold text-gray-500 text-right">{entry.bestScore}最佳</span>
+                      <span className="font-bold text-gray-400 text-right">{entry.sessionCount}次</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 4 }}>患者完成率比較</h3>
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={analyticsData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#90A4AE' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12, color: 'white' }} />
+                  <ReferenceLine y={80} stroke="#66BB6A" strokeDasharray="3 3" />
+                  <Bar dataKey="compliance" fill="#7B1FA2" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="score" fill="#CE93D8" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>動作類型表現對比</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={categoryComparison}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
+                    <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none' }} />
+                    <Bar dataKey="completion" fill="#5E35B1" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="dropRate" fill="#EF5350" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>異常與達標熱點</h3>
+                <div className="space-y-3">
+                  {alertHotspots.map((item) => (
+                    <div key={item.type}>
+                      <div className="flex justify-between mb-1">
+                        <span style={{ fontSize: 13, color: '#546E7A', fontWeight: 600 }}>{item.type}</span>
+                        <span style={{ fontSize: 13, color: '#1A2035', fontWeight: 700 }}>{item.value}</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-gray-100">
+                        <div
+                          className="h-2 rounded-full"
+                          style={{ width: `${Math.min(100, (item.value / mockAlertStats.targetReached) * 100)}%`, background: item.color }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>近五週趨勢</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={weeklyTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F0F4F8" vertical={false} />
+                    <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <YAxis domain={[40, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#90A4AE' }} />
+                    <Tooltip contentStyle={{ background: '#1A2035', border: 'none', borderRadius: 8, fontSize: 12, color: 'white' }} />
+                    <Line type="monotone" dataKey="completion" stroke="#5E35B1" strokeWidth={3} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="score" stroke="#1565C0" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="targetReached" stroke="#43A047" strokeWidth={2.5} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>風險分層分佈</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={riskDistribution}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={82}
+                      paddingAngle={4}
+                    >
+                      {riskDistribution.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Legend iconType="circle" />
+                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', fontSize: 12 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>多維度評估</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <RadarChart data={radarData}>
+                    <PolarGrid stroke="#E8ECF0" />
+                    <PolarAngleAxis dataKey="metric" tick={{ fontSize: 12, fill: '#546E7A' }} />
+                    <Radar name="王大明" dataKey="A" stroke="#7B1FA2" fill="#7B1FA2" fillOpacity={0.15} />
+                    <Radar name="李秀英" dataKey="B" stroke="#1565C0" fill="#1565C0" fillOpacity={0.1} />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1A2035', marginBottom: 12 }}>個案洞察與優先級</h3>
+                <div className="space-y-3">
+                  {patientInsights.map((p) => (
+                    <div key={p.name} className="rounded-xl p-3 border" style={{ borderColor: '#EEF2F7', background: '#FAFBFD' }}>
+                      <div className="flex items-center justify-between">
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1A2035' }}>{p.name}</span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{
+                            background: p.risk === 'high' ? '#FFEBEE' : p.risk === 'medium' ? '#FFF3E0' : '#E8F5E9',
+                            color: p.risk === 'high' ? '#C62828' : p.risk === 'medium' ? '#E65100' : '#2E7D32',
+                          }}
+                        >
+                          {p.risk === 'high' ? '高優先' : p.risk === 'medium' ? '中優先' : '低優先'}
+                        </span>
+                      </div>
+                      <div className="mt-2 text-xs" style={{ color: '#607D8B' }}>
+                        完成率 {p.compliance}% · 分數 {p.score} · 角度差 {Math.abs(p.gap)}°
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Prescriptions Tab (保留原有的所有患者處方一覽) ── */}
+        {activeTab === 'prescriptions' && (
+          <div className="flex flex-col gap-4">
+            <div className="rounded-2xl p-4 shadow-sm flex items-start gap-3" style={{ background: '#FFF8E1', border: '1px solid #FFE082' }}>
+              <AlertCircle size={18} style={{ color: '#F57C00', marginTop: 2 }} />
+              <p style={{ fontSize: 13, color: '#7C4D00', lineHeight: 1.5 }}>在此可調整各患者的角度目標與安全範圍。AI 只提供建議，最後需由醫師確認；升階採保守調整。</p>
+            </div>
+            {patients.map(patient => (
+              <div key={patient.id} className="rounded-2xl overflow-hidden shadow-sm bg-white">
+                <div className="px-5 py-4 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #EDE7F6, #E8EAF6)' }}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ background: '#7B1FA2' }}>{patient.avatar}</div>
+                    <span className="font-bold text-gray-700">{patient.name}</span>
+                  </div>
+                </div>
+                <div className="p-4 space-y-2">
+                  {prescriptions.filter(p => p.patientId === patient.id).map(rx => {
+                    const ex = mockExercises.find(e => e.id === rx.exerciseId);
+                    const plan = resolvePrescriptionPlan(rx, ex);
+                    const aiSuggestion = buildAiDifficultySuggestion(rx, ex, sessionRecords);
+                    const aiTone = getSuggestionTone(aiSuggestion.direction);
+                    const canApplyAiSuggestion =
+                      aiSuggestion.direction === 'increase' || aiSuggestion.direction === 'decrease';
+                    return (
+                      <div key={rx.id} className="text-sm p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex justify-between items-center gap-3">
+                          <span className="font-medium text-gray-600">{ex?.name}</span>
+                          <span className="font-bold text-purple-700">
+                            第{plan.difficultyLevel}關 · {plan.effectiveTargetAngle}° · 安全 {plan.safetyMinAngle}°-{plan.safetyMaxAngle}°
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] font-semibold text-emerald-700">
+                          疼痛 7/10 以上會建議停止，並通知醫師與家屬確認。
+                        </p>
+                        <div
+                          className="mt-2 rounded-xl border px-3 py-2 flex items-center justify-between gap-3"
+                          style={{ background: aiTone.bg, borderColor: aiTone.border }}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1 text-xs font-black" style={{ color: aiTone.text }}>
+                              <Brain size={14} />
+                              <span>AI 建議需確認 · {aiTone.label} · {aiSuggestion.confidence}%</span>
+                            </div>
+                            <p className="text-[11px] mt-1 truncate" style={{ color: '#6B7280' }}>
+                              {aiSuggestion.reason}
+                            </p>
+                            <p className="text-[11px] mt-1" style={{ color: '#6B7280' }}>
+                              升階最多一次提高 1 關，避免過度訓練。
+                            </p>
+                          </div>
+                          {canApplyAiSuggestion && (
+                            <button
+                              type="button"
+                              onClick={() => handleApplyAiSuggestion(rx.id, aiSuggestion.suggestedLevel)}
+                              className="shrink-0 rounded-lg px-3 py-1.5 text-xs font-black text-white"
+                              style={{ background: aiTone.text }}
+                            >
+                              醫師確認
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
