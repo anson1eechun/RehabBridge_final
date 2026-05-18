@@ -24,6 +24,7 @@ import {
 } from '../services/yatingTts';
 import { SkeletonCanvas } from '../components/SkeletonCanvas';
 import { AngleGauge } from '../components/AngleGauge';
+import { RehabGamePanel } from '../components/RehabGamePanel';
 import {
   extractAngleFromKeypoints,
   getAngleResult,
@@ -35,6 +36,8 @@ import { mockExercises } from '../data/mockData';
 import { appendSessionRecord, getMergedSessionRecords } from '../data/sessionStore';
 import { getTodayIsoDate, recordTrainingCompletion } from '../data/progressStore';
 import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
+import { getRehabGameForExercise } from '../data/rehabGameCatalog';
+import { getRehabExerciseGuidance } from '../data/rehabExerciseGuidance';
 import {
   CARE_TEAM_CONVERSATION_ID,
   sendConversationMessage,
@@ -79,6 +82,7 @@ export default function RehabSession() {
   const [isActive, setIsActive] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [focusMode, setFocusMode] = useState<'camera' | 'game'>('camera');
   const [currentSet, setCurrentSet] = useState(1);
   const [currentRep, setCurrentRep] = useState(0);
   const [holdCountdown, setHoldCountdown] = useState(0);
@@ -111,6 +115,8 @@ export default function RehabSession() {
 
   // Resolve exercise + prescription
   const exercise = mockExercises.find(e => e.id === exerciseId);
+  const rehabGame = getRehabGameForExercise(exercise?.id);
+  const rehabGuidance = getRehabExerciseGuidance(exercise?.id);
   const prescription = prescriptions.find(
     p => p.patientId === PATIENT_ID && p.exerciseId === exerciseId
   );
@@ -196,6 +202,12 @@ export default function RehabSession() {
     effectiveHoldSeconds,
   ]);
 
+  const professionalBriefText = useMemo(() => {
+    const steps = rehabGuidance.whatToDo.slice(0, 2).join('。');
+    const precautions = rehabGuidance.precautions.slice(0, 2).join('。');
+    return `等等要做：${steps}。注意事項：${precautions}。`;
+  }, [rehabGuidance]);
+
   const buildGoalBriefText = useCallback(() => {
     const name = exercise?.name ?? '這個動作';
     if (voiceDialect === 'taiwanese') {
@@ -212,8 +224,8 @@ export default function RehabSession() {
   ]);
 
   const speakGoalBrief = useCallback(() => {
-    speak(buildGoalBriefText(), true, 'zh-TW');
-  }, [buildGoalBriefText, speak]);
+    speak(`${buildGoalBriefText()} ${professionalBriefText}`, true, 'zh-TW');
+  }, [buildGoalBriefText, professionalBriefText, speak]);
 
   const handleListenGoalBrief = useCallback(() => {
     speakGoalBrief();
@@ -888,6 +900,26 @@ export default function RehabSession() {
     uiAngleResult.status === 'achieved' ? '#66BB6A' :
     uiAngleResult.status === 'below' ? '#EF5350' :
     '#FFA726';
+  const isGameFocus = sessionStarted && focusMode === 'game';
+  const gamePanelProps = {
+    game: rehabGame,
+    sessionStarted,
+    sessionComplete,
+    isResting,
+    isHolding,
+    holdCountdown,
+    holdSeconds: effectiveHoldSeconds,
+    currentAngle,
+    hasValidAngle,
+    targetAngle,
+    tolerance: effectiveTolerance,
+    angleStatus: angleResult.status as 'below' | 'achieved' | 'above',
+    currentRep,
+    totalReps,
+    currentSet,
+    totalSets,
+    safetyStopped,
+  };
 
   return (
     <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#111D2D' }}>
@@ -933,6 +965,31 @@ export default function RehabSession() {
         </div>
 
         <div className="flex items-center gap-2">
+          {sessionStarted && (
+            <div className="flex rounded-2xl p-1" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              {[
+                { id: 'camera' as const, label: '看動作' },
+                { id: 'game' as const, label: '玩遊戲' },
+              ].map((item) => {
+                const active = focusMode === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setFocusMode(item.id)}
+                    className="rounded-xl px-4 py-2 font-black transition-colors"
+                    style={{
+                      background: active ? '#FACC15' : 'transparent',
+                      color: active ? '#111827' : 'rgba(255,255,255,0.72)',
+                      fontSize: patientPx(12),
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <div
             className="px-2 py-1 rounded-lg shrink-0 max-w-[140px] leading-tight"
             style={{
@@ -1015,8 +1072,18 @@ export default function RehabSession() {
       {/* Main Layout: Camera + Sidebar */}
       <div className="flex-1 flex gap-0 overflow-hidden">
 
+        {isGameFocus && (
+          <div className="flex-1 min-w-0 bg-[#101C2B] p-4">
+            <RehabGamePanel {...gamePanelProps} variant="hero" />
+          </div>
+        )}
+
         {/* Camera Feed Column */}
-        <div className="flex-1 relative bg-black overflow-hidden" ref={videoContainerRef}>
+        <div
+          className={`${isGameFocus ? 'shrink-0' : 'flex-1'} relative bg-black overflow-hidden`}
+          style={isGameFocus ? { width: '36%', minWidth: 420, maxWidth: 760 } : undefined}
+          ref={videoContainerRef}
+        >
           {/* Video element */}
           <video
             ref={videoRef}
@@ -1112,6 +1179,78 @@ export default function RehabSession() {
                         • {item}
                       </p>
                     ))}
+                  </div>
+                  <div
+                    className="rounded-3xl px-5 py-4 sm:px-6 sm:py-5 mb-5 sm:mb-6 text-left border border-emerald-300/25"
+                    style={{ background: 'rgba(13, 148, 136, 0.16)' }}
+                  >
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <p
+                          style={{
+                            color: '#A7F3D0',
+                            fontSize: 'clamp(1.05rem, 3vw, 1.28rem)',
+                            fontWeight: 900,
+                            marginBottom: 10,
+                          }}
+                        >
+                          等等要做
+                        </p>
+                        {rehabGuidance.whatToDo.slice(0, 3).map((item, index) => (
+                          <p
+                            key={`guide-step-${index}`}
+                            style={{
+                              color: 'rgba(255,255,255,0.88)',
+                              fontSize: 'clamp(1rem, 2.75vw, 1.18rem)',
+                              lineHeight: 1.55,
+                              fontWeight: 650,
+                              marginBottom: index === Math.min(2, rehabGuidance.whatToDo.length - 1) ? 0 : 8,
+                            }}
+                          >
+                            {index + 1}. {item}
+                          </p>
+                        ))}
+                      </div>
+                      <div>
+                        <p
+                          style={{
+                            color: '#FDE68A',
+                            fontSize: 'clamp(1.05rem, 3vw, 1.28rem)',
+                            fontWeight: 900,
+                            marginBottom: 10,
+                          }}
+                        >
+                          注意事項
+                        </p>
+                        {rehabGuidance.precautions.slice(0, 3).map((item, index) => (
+                          <p
+                            key={`guide-caution-${index}`}
+                            style={{
+                              color: 'rgba(255,255,255,0.88)',
+                              fontSize: 'clamp(1rem, 2.75vw, 1.18rem)',
+                              lineHeight: 1.55,
+                              fontWeight: 650,
+                              marginBottom: index === Math.min(2, rehabGuidance.precautions.length - 1) ? 0 : 8,
+                            }}
+                          >
+                            {index + 1}. {item}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                    <a
+                      href={rehabGuidance.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 block rounded-2xl px-3 py-2 text-center font-bold"
+                      style={{
+                        background: 'rgba(255,255,255,0.08)',
+                        color: 'rgba(255,255,255,0.68)',
+                        fontSize: 'clamp(0.86rem, 2.35vw, 1rem)',
+                      }}
+                    >
+                      專業內容參考：{rehabGuidance.sourceLabel}
+                    </a>
                   </div>
                   <div className="w-full mb-5">
                     <button
@@ -1376,6 +1515,8 @@ export default function RehabSession() {
             borderLeft: '1px solid rgba(255,255,255,0.06)',
           }}
         >
+
+          {!isGameFocus && <RehabGamePanel {...gamePanelProps} />}
 
           {/* Angle Gauge */}
           <div className="p-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>

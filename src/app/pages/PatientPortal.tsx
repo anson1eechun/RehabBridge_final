@@ -21,6 +21,7 @@ import {
   findPersonalBest,
 } from '../data/sessionStore';
 import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
+import { getRehabGameForExercise } from '../data/rehabGameCatalog';
 import {
   type BadgeProgress,
   buildProgressSummary,
@@ -319,8 +320,35 @@ export default function PatientPortal() {
     ? getBadgeVisual(selectedAchievementBadge, selectedAchievementHiddenLocked)
     : null;
   const todayProgressPercent = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
-  const remainingToday = Math.max(0, totalToday - completedToday);
-  const nextExercise = displayExercises.find((item) => !completedToday || !todaySessions.some((s) => s.exerciseId === item.exercise.id));
+  const firstIncompleteStageIndex = displayExercises.findIndex(
+    (item) => !todaySessions.some((session) => session.exerciseId === item.exercise.id)
+  );
+  const activeStageIndex =
+    firstIncompleteStageIndex >= 0
+      ? firstIncompleteStageIndex
+      : Math.max(0, displayExercises.length - 1);
+  const levelStages = displayExercises.map((item, index) => {
+    const isDone = todaySessions.some((session) => session.exerciseId === item.exercise.id);
+    const isActive = index === activeStageIndex && firstIncompleteStageIndex >= 0;
+    return {
+      item,
+      index,
+      isDone,
+      isActive,
+      isLocked: index > activeStageIndex && !isDone,
+    };
+  });
+  const activeStage = levelStages[activeStageIndex] ?? levelStages[0];
+  const activeGame = getRehabGameForExercise(activeStage?.item.exercise.id);
+  const hasClearedAllStages = totalToday > 0 && completedToday >= totalToday;
+  const mapPositions = [
+    { left: 18, top: 66 },
+    { left: 39, top: 54 },
+    { left: 66, top: 64 },
+    { left: 78, top: 44 },
+    { left: 52, top: 30 },
+    { left: 25, top: 42 },
+  ];
   const quickActions = [
     {
       label: '排名',
@@ -375,7 +403,7 @@ export default function PatientPortal() {
   }, [activeDetailPanel]);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] [&_.text-xs]:text-lg [&_.text-sm]:text-xl [&_.text-base]:text-2xl [&_.text-lg]:text-3xl [&_.text-xl]:text-3xl [&_.text-2xl]:text-4xl">
+    <div className="h-[100dvh] overflow-hidden bg-[#EEF6FF]">
       
       {/* ── 彈出層：通知面板 ── */}
       <AnimatePresence>
@@ -649,156 +677,209 @@ export default function PatientPortal() {
         )}
       </AnimatePresence>
 
-      <div className="bg-gradient-to-r from-blue-600 to-blue-800 pt-8 pb-16 px-8">
-        <div className="max-w-7xl mx-auto flex justify-between items-start">
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="flex items-center gap-3 text-white/85 hover:text-white mb-4 transition-colors text-3xl md:text-4xl font-bold min-h-[56px] min-w-[140px] -ml-1 rounded-full border-2 border-white/55 hover:border-white hover:bg-white/15 px-6 py-3 active:scale-[0.98]"
-            >
-              <ArrowLeft size={36} strokeWidth={2.5} className="shrink-0" aria-hidden />
-              <span>返回</span>
-            </button>
-            <h1 className="text-white text-4xl md:text-5xl font-bold leading-tight">
-              <span className="text-blue-100 font-semibold">{greeting}，</span>
-              {PATIENT.name}
-            </h1>
-          </motion.div>
-          
-          <button 
+      <div className="h-full min-h-0 px-4 py-3 sm:px-6 sm:py-5 lg:px-8 flex flex-col">
+        <header className="shrink-0 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="h-14 rounded-2xl bg-white border border-blue-100 px-4 flex items-center gap-2 text-xl font-black text-blue-700 shadow-sm active:scale-[0.98]"
+          >
+            <ArrowLeft size={28} strokeWidth={2.6} />
+            返回
+          </button>
+
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-sm sm:text-base font-black text-blue-500">{greeting}，{PATIENT.name}</p>
+            <h1 className="text-3xl sm:text-4xl font-black text-slate-800 leading-tight">復健闖關</h1>
+          </div>
+
+          <button
+            type="button"
             onClick={() => setIsNotifyOpen(true)}
-            className="relative p-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-all"
+            className="relative h-14 w-14 rounded-2xl bg-white border border-blue-100 flex items-center justify-center shadow-sm active:scale-[0.98]"
             aria-label={notifications.length > 0 ? '通知，有新訊息' : '通知'}
           >
-            <Bell size={24} className="text-white" />
+            <Bell size={26} className="text-blue-700" />
             {notifications.length > 0 && (
               <span
-                className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-blue-800 shadow-[0_0_10px_rgba(239,68,68,0.95)]"
+                className="absolute top-2 right-2 w-3 h-3 rounded-full bg-red-500 ring-2 ring-white"
                 aria-hidden
               />
             )}
           </button>
-        </div>
-      </div>
+        </header>
 
-      {/* ── 主佈覽區 ── */}
-      <div className="mx-auto max-w-6xl px-5 md:px-8 -mt-10 pb-10">
-        <div className="rounded-[2rem] bg-white shadow-sm border border-blue-100 p-5 sm:p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-xl font-black text-blue-600">今天的訓練計畫</p>
-              <h2 className="mt-1 text-4xl md:text-5xl font-black text-gray-800 leading-tight">
-                先選一個動作開始
-              </h2>
-              <p className="mt-2 text-xl text-gray-500">
-                今天還有 {remainingToday} 個動作，照著卡片做就好。
-              </p>
+        <main className="relative mt-3 min-h-0 flex-1 overflow-hidden rounded-[2rem] border border-sky-100 bg-[#7BE7FF] shadow-sm">
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,#20C7F3_0%,#8AE8FF_48%,#EAFBFF_100%)]" />
+          <div className="absolute -left-16 top-10 h-24 w-56 rounded-full bg-white/85" />
+          <div className="absolute left-14 top-5 h-28 w-64 rounded-full bg-white/70" />
+          <div className="absolute right-4 top-20 h-24 w-72 rounded-full bg-white/70" />
+          <div className="absolute -right-12 bottom-28 h-32 w-80 rounded-full bg-white/75" />
+          <div className="absolute left-1/4 bottom-24 h-24 w-72 rounded-full bg-white/75" />
+
+          <svg
+            className="absolute inset-0 h-full w-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <path d="M 12 82 C 30 76 31 64 44 62 C 58 60 60 77 72 70 C 87 61 84 44 75 42 C 62 39 62 28 51 31 C 39 34 35 44 24 42" fill="none" stroke="#FF6B6B" strokeWidth="14" strokeLinecap="round" />
+            <path d="M 12 82 C 30 76 31 64 44 62 C 58 60 60 77 72 70 C 87 61 84 44 75 42 C 62 39 62 28 51 31 C 39 34 35 44 24 42" fill="none" stroke="#FFD93D" strokeWidth="11" strokeLinecap="round" />
+            <path d="M 12 82 C 30 76 31 64 44 62 C 58 60 60 77 72 70 C 87 61 84 44 75 42 C 62 39 62 28 51 31 C 39 34 35 44 24 42" fill="none" stroke="#6BCB77" strokeWidth="8" strokeLinecap="round" />
+            <path d="M 12 82 C 30 76 31 64 44 62 C 58 60 60 77 72 70 C 87 61 84 44 75 42 C 62 39 62 28 51 31 C 39 34 35 44 24 42" fill="none" stroke="#4D96FF" strokeWidth="5" strokeLinecap="round" />
+            <path d="M 12 82 C 30 76 31 64 44 62 C 58 60 60 77 72 70 C 87 61 84 44 75 42 C 62 39 62 28 51 31 C 39 34 35 44 24 42" fill="none" stroke="#A66CFF" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+
+          <div className="absolute left-4 top-4 z-30 rounded-[1.5rem] bg-white/90 px-4 py-3 shadow-sm backdrop-blur">
+            <p className="text-sm sm:text-base font-black text-blue-500">目前挑戰</p>
+            <div className="text-2xl sm:text-4xl font-black text-slate-800 leading-tight">
+              {hasClearedAllStages ? '全通關' : `第 ${activeStage ? activeStage.index + 1 : 1} 關`}
             </div>
-
-            <div className="w-full lg:w-[22rem] rounded-[1.5rem] border border-blue-100 bg-blue-50 p-4">
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-lg font-black text-blue-600">今日進度</div>
-                  <div className="mt-1 text-4xl font-black text-blue-800 tabular-nums">
-                    {completedToday}/{totalToday}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-black text-orange-600">連續</div>
-                  <div className="text-4xl font-black text-orange-700 tabular-nums">{streakDays}天</div>
-                </div>
-              </div>
-              <div className="mt-4 h-5 overflow-hidden rounded-full bg-white">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400"
-                  style={{ width: `${todayProgressPercent}%` }}
-                />
-              </div>
-              <p className="mt-3 text-lg font-bold text-blue-700">
-                {remainingToday === 0
-                  ? '今天任務完成了，辛苦了。'
-                  : nextExercise
-                    ? `下一個建議：${nextExercise.exercise.name}`
-                    : progressSummary.trainingStreak.message}
+            <p className="mt-1 max-w-60 truncate text-base sm:text-xl font-bold text-slate-500">
+              {hasClearedAllStages ? '今天辛苦了' : activeStage?.item.exercise.name ?? '等待處方'}
+            </p>
+            {!hasClearedAllStages && activeStage && (
+              <p className="mt-1 max-w-60 truncate text-sm sm:text-base font-black text-amber-600">
+                {activeGame.shortTitle}
               </p>
+            )}
+          </div>
+
+          <div className="absolute right-4 top-4 z-30 rounded-[1.5rem] bg-white/90 px-4 py-3 text-right shadow-sm backdrop-blur">
+            <p className="text-sm sm:text-base font-black text-emerald-600">進度</p>
+            <p className="text-3xl sm:text-4xl font-black text-emerald-700 tabular-nums">{completedToday}/{totalToday}</p>
+            <div className="mt-2 h-3 w-28 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-blue-500"
+                style={{ width: `${todayProgressPercent}%` }}
+              />
             </div>
           </div>
 
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {displayExercises.map((item, index) => {
-              const ex = item.exercise;
-              const isDone = todaySessions.some((s) => s.exerciseId === ex.id);
-              return (
+          {levelStages.map((stage) => {
+            const ex = stage.item.exercise;
+            const game = getRehabGameForExercise(ex.id);
+            const pos = mapPositions[stage.index % mapPositions.length];
+            const isAvailable = !stage.isLocked;
+            const statusLabel = stage.isLocked ? '未解鎖' : stage.isDone ? '已通關' : '挑戰中';
+            return (
+              <button
+                key={`map-stage-${stage.item.id}`}
+                type="button"
+                disabled={!isAvailable}
+                onClick={() => {
+                  if (!isAvailable) return;
+                  writeVoiceDialectPreference(planVoiceDialect);
+                  window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+                  navigate(`/patient/rehab/${ex.id}`);
+                }}
+                className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-transform active:scale-[0.96] ${
+                  stage.isActive ? 'scale-110' : ''
+                } ${stage.isLocked ? 'cursor-not-allowed grayscale' : 'hover:scale-105'}`}
+                style={{ left: `${pos.left}%`, top: `${pos.top}%` }}
+                aria-label={`第 ${stage.index + 1} 關 ${ex.name} ${statusLabel}`}
+              >
+                <div className="relative h-[clamp(5.6rem,12vw,8.8rem)] w-[clamp(7.4rem,16vw,11.5rem)]">
+                  <div className="absolute bottom-0 left-1/2 h-12 w-[105%] -translate-x-1/2 rounded-full bg-white shadow-[0_10px_20px_rgba(15,118,110,0.18)]" />
+                  <div
+                    className={`absolute bottom-5 left-1/2 h-14 w-[82%] -translate-x-1/2 overflow-hidden rounded-[45%] border-4 border-white shadow-md ${
+                      stage.isDone
+                        ? 'bg-gradient-to-br from-emerald-300 to-lime-500'
+                        : stage.isActive
+                          ? 'bg-gradient-to-br from-green-300 to-teal-500'
+                          : 'bg-gradient-to-br from-slate-300 to-slate-400'
+                    }`}
+                  >
+                    <div className="absolute bottom-0 left-1 h-9 w-12 rounded-t-full bg-emerald-800/70" />
+                    <div className="absolute bottom-0 right-2 h-11 w-14 rounded-t-full bg-emerald-900/70" />
+                    <div className="absolute bottom-4 left-8 h-5 w-5 rounded-full bg-lime-300" />
+                    <div className="absolute bottom-5 right-10 h-4 w-4 rounded-full bg-lime-200" />
+                  </div>
+                  <div
+                    className={`absolute left-1/2 top-0 h-16 w-16 -translate-x-1/2 rotate-45 rounded-2xl border-4 border-white shadow-lg ${
+                      stage.isDone
+                        ? 'bg-emerald-500'
+                        : stage.isActive
+                          ? 'bg-blue-600'
+                          : 'bg-slate-500'
+                    }`}
+                  />
+                  <div className="absolute left-1/2 top-2 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full bg-white/90">
+                    {stage.isLocked ? (
+                      <LockKeyhole size={26} className="text-slate-500" />
+                    ) : stage.isDone ? (
+                      <CheckCircle size={28} className="text-emerald-600" />
+                    ) : (
+                      <span className="text-2xl font-black text-blue-700">{stage.index + 1}</span>
+                    )}
+                  </div>
+                  <div className="absolute bottom-1 left-1/2 w-[86%] -translate-x-1/2 rounded-full bg-[#8B4A2B] px-2 py-1 text-center shadow-md">
+                    <p className="truncate text-xs sm:text-sm font-black text-white">第 {stage.index + 1} 關</p>
+                    <p className="truncate text-[10px] sm:text-xs font-bold text-amber-100">{game.shortTitle}</p>
+                  </div>
+                  {stage.isActive && !hasClearedAllStages && (
+                    <div className="absolute -top-9 left-1/2 -translate-x-1/2 rounded-full bg-yellow-300 px-5 py-1.5 text-lg font-black text-slate-900 shadow-md ring-4 ring-white">
+                      START
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+
+          <div className="absolute inset-x-0 bottom-0 z-10 h-24 bg-gradient-to-t from-emerald-700 to-emerald-500" />
+          <div className="absolute -bottom-7 left-0 z-10 h-24 w-52 rounded-full bg-emerald-800" />
+          <div className="absolute -bottom-10 right-0 z-10 h-28 w-72 rounded-full bg-emerald-900" />
+          <div className="absolute bottom-10 left-8 z-20 flex gap-2">
+            {quickActions.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                className="h-16 w-16 rounded-2xl border-2 border-white bg-white/90 shadow-md backdrop-blur flex flex-col items-center justify-center gap-0.5 active:scale-[0.96]"
+                aria-label={item.label}
+              >
+                <item.icon className={item.color} size={22} />
+                <span className="text-[11px] font-black text-slate-600">{item.label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="absolute bottom-8 right-8 z-30 flex items-center gap-3">
+            <div className="hidden sm:flex rounded-full bg-white/90 p-1 shadow-md">
+              {(['mandarin', 'taiwanese'] as VoiceDialectPreference[]).map((dialect) => (
                 <button
-                  key={`simple-${item.id}`}
+                  key={dialect}
                   type="button"
-                  onClick={() => {
-                    writeVoiceDialectPreference(planVoiceDialect);
-                    window.dispatchEvent(new Event('rehab-voice-dialect-change'));
-                    navigate(`/patient/rehab/${ex.id}`);
-                  }}
-                  className={`text-left rounded-[1.75rem] border-2 p-5 min-h-[12rem] transition-all active:scale-[0.98] ${
-                    isDone
-                      ? 'bg-green-50 border-green-200'
-                      : 'bg-white border-blue-100 hover:border-blue-300 hover:bg-blue-50/40'
+                  onClick={() => pickPlanVoiceDialect(dialect)}
+                  className={`rounded-full px-4 py-2 text-base font-black ${
+                    planVoiceDialect === dialect ? 'bg-blue-600 text-white' : 'text-slate-500'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div
-                      className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 ${
-                        isDone ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                      }`}
-                    >
-                      {isDone ? <CheckCircle size={36} /> : <Play size={36} fill="currentColor" />}
-                    </div>
-                    <span
-                      className={`rounded-full px-4 py-2 text-lg font-black ${
-                        isDone ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                      }`}
-                    >
-                      {isDone ? '已完成' : '開始訓練'}
-                    </span>
-                  </div>
-                  <p className="mt-5 text-xl font-black text-gray-400">動作 {index + 1}</p>
-                  <h3 className="mt-1 text-4xl font-black text-gray-800 leading-tight">{ex.name}</h3>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="rounded-full bg-amber-50 border border-amber-100 px-4 py-2 text-xl font-black text-amber-700">
-                      第 {item.difficultyLevel} 關 / {item.difficultyLabel}
-                    </span>
-                    <span className="rounded-full bg-gray-50 border border-gray-100 px-4 py-2 text-xl font-bold text-gray-600">
-                      {item.sets} 組 x {item.reps} 次
-                    </span>
-                    <span className="rounded-full bg-gray-50 border border-gray-100 px-4 py-2 text-xl font-bold text-gray-600">
-                      保持 {item.holdSeconds} 秒
-                    </span>
-                  </div>
+                  {dialect === 'mandarin' ? '國語' : '台語'}
                 </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {quickActions.map((item) => (
+              ))}
+            </div>
             <button
-              key={item.label}
               type="button"
-              onClick={item.onClick}
-              className={`h-32 rounded-2xl ${item.bg} border border-white px-4 py-3 text-left shadow-sm active:scale-[0.98] transition-all flex flex-col justify-between`}
+              onClick={() => {
+                const target = hasClearedAllStages
+                  ? levelStages[0]?.item.exercise.id
+                  : activeStage?.item.exercise.id;
+                if (!target) return;
+                writeVoiceDialectPreference(planVoiceDialect);
+                window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+                navigate(`/patient/rehab/${target}`);
+              }}
+              className="min-h-16 rounded-full bg-yellow-300 px-8 text-2xl sm:text-3xl font-black text-slate-900 shadow-xl ring-4 ring-white active:scale-[0.96]"
             >
-              <item.icon className={item.color} size={26} />
-              <div>
-                <div className="text-2xl font-black text-gray-800 tabular-nums leading-tight whitespace-nowrap">
-                  {item.value}
-                </div>
-                <div className="text-lg font-bold text-gray-500 leading-tight">{item.label}</div>
-              </div>
+              {hasClearedAllStages ? '再闖一次' : '開始闖關'}
             </button>
-          ))}
-        </div>
+          </div>
+        </main>
       </div>
 
+      {false && (
       <div className="hidden max-w-7xl mx-auto px-8 -mt-10 pb-12">
         <div className="space-y-6">
             
@@ -1309,6 +1390,7 @@ export default function PatientPortal() {
             </div>
           </div>
       </div>
+      )}
     </div>
   );
 }
