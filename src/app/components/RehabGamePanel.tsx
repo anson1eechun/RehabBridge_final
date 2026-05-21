@@ -392,6 +392,7 @@ function renderScene(
 export function RehabGamePanel(props: RehabGamePanelProps) {
   const {
     game,
+    variant = 'side',
     sessionStarted,
     sessionComplete,
     currentAngle,
