@@ -38,6 +38,7 @@ import { getTodayIsoDate, recordTrainingCompletion } from '../data/progressStore
 import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
 import { getRehabGameForExercise } from '../data/rehabGameCatalog';
 import { getRehabExerciseGuidance } from '../data/rehabExerciseGuidance';
+import { getExerciseTrackingMode, isGuidedTrackingMode } from '../data/guidedExerciseCatalog';
 import {
   CARE_TEAM_CONVERSATION_ID,
   sendConversationMessage,
@@ -135,6 +136,12 @@ export default function RehabSession() {
   const safetyNote =
     prescriptionPlan?.safetyNote ??
     '疼痛達 7/10 時，系統會建議停止並通知照護團隊。';
+  const trackingMode = getExerciseTrackingMode(exercise, prescription);
+
+  useEffect(() => {
+    if (!exercise || !isGuidedTrackingMode(trackingMode)) return;
+    navigate(`/patient/guided/${prescription?.id ?? `AUTO-${exercise.id}`}`, { replace: true });
+  }, [exercise, trackingMode, prescription?.id, navigate]);
 
   const effectiveTolerance = tolerance;
   const effectiveHoldSeconds = holdSeconds;

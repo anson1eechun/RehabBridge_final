@@ -22,6 +22,9 @@ import {
 } from '../data/sessionStore';
 import { resolvePrescriptionPlan, usePrescriptions } from '../data/prescriptionStore';
 import { getRehabGameForExercise } from '../data/rehabGameCatalog';
+import { getExerciseTrackingMode, isGuidedTrackingMode } from '../data/guidedExerciseCatalog';
+import { useGuidedSessionRecords } from '../data/guidedSessionStore';
+import { getExerciseSafetyLabel } from '../data/exerciseSafetyCatalog';
 import {
   type BadgeProgress,
   buildProgressSummary,
@@ -118,6 +121,7 @@ export default function PatientPortal() {
   const [activeDetailPanel, setActiveDetailPanel] = useState<DetailPanel | null>(null);
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
   const sessionRecords = useSessionRecords();
+  const guidedSessionRecords = useGuidedSessionRecords();
   const allPrescriptions = usePrescriptions();
   const progress = usePatientProgress(PATIENT.id);
   const [planVoiceDialect, setPlanVoiceDialect] = useState<VoiceDialectPreference>(() =>
@@ -176,6 +180,7 @@ export default function PatientPortal() {
   const exercises = mockExercises.map((exercise) => {
     const matchedRx = prescriptions.find((rx) => rx.exerciseId === exercise.id);
     const plan = matchedRx ? resolvePrescriptionPlan(matchedRx, exercise) : null;
+    const trackingMode = getExerciseTrackingMode(exercise, matchedRx);
     return {
       id: matchedRx?.id ?? `AUTO-${exercise.id}`,
       exercise,
@@ -186,6 +191,8 @@ export default function PatientPortal() {
       holdSeconds: plan?.effectiveHoldSeconds ?? exercise.holdSeconds,
       difficultyLevel: plan?.difficultyLevel ?? 2,
       difficultyLabel: plan?.difficultyLabel ?? '標準',
+      trackingMode,
+      safetyLabel: getExerciseSafetyLabel(exercise, matchedRx),
       frequency: matchedRx?.frequency ?? '每天一次',
       source: matchedRx ? 'prescription' : 'catalog',
     };
@@ -194,15 +201,27 @@ export default function PatientPortal() {
     下肢: 0,
     上肢: 1,
     核心: 2,
+    踝足: 3,
+    頸部: 4,
   };
   /** 同一大類內依訓練部位（bodyArea）排序：膝→大腿→髖→全身；上肢手肘→肩膀 */
   const bodyAreaOrder: Record<string, number> = {
     膝蓋: 0,
     大腿: 1,
     髖部: 2,
-    全身: 3,
+    功能性: 3,
+    '臀腿/核心': 4,
+    全身: 5,
     手肘: 0,
     肩膀: 1,
+    上背: 2,
+    胸肩: 3,
+    '肩胛/上背': 4,
+    踝: 5,
+    頸椎: 6,
+    腰背: 7,
+    胸椎: 8,
+    臀部: 9,
   };
   /** 今日計畫只納入「目前有處方」的動作，不把整本動作庫都放上主頁 */
   const prescribedOnly = exercises.filter((item) => item.source === 'prescription');
@@ -219,11 +238,9 @@ export default function PatientPortal() {
   });
 
   // 在處方範圍內：腿部（下肢＋核心）最多 2 項、手部（上肢）最多 2 項；先腿後手。
-  const MAX_LEG = 2;
+  const MAX_LEG = 3;
   const MAX_ARM = 2;
-  const legPool = sortedExercises.filter(
-    (item) => item.exercise.category === '下肢' || item.exercise.category === '核心'
-  );
+  const legPool = sortedExercises.filter((item) => item.exercise.category !== '上肢');
   const armPool = sortedExercises.filter((item) => item.exercise.category === '上肢');
   const displayExercises: typeof sortedExercises = [
     ...legPool.slice(0, MAX_LEG),
@@ -237,14 +254,21 @@ export default function PatientPortal() {
   const todaySessions = sessionRecords.filter(
     s => s.patientId === PATIENT.id && s.date === today
   );
+  const todayGuidedSessions = guidedSessionRecords.filter(
+    s => s.patientId === PATIENT.id && s.date === today
+  );
 
   const plannedExerciseIdList = displayExercises.map((item) => item.exercise.id);
   const plannedExerciseIds = new Set(plannedExerciseIdList);
-  const completedToday = new Set(
-    todaySessions.filter((s) => plannedExerciseIds.has(s.exerciseId)).map((s) => s.exerciseId)
-  ).size;
+  const completedExerciseIds = new Set([
+    ...todaySessions.filter((s) => plannedExerciseIds.has(s.exerciseId)).map((s) => s.exerciseId),
+    ...todayGuidedSessions.filter((s) => plannedExerciseIds.has(s.exerciseId)).map((s) => s.exerciseId),
+  ]);
+  const completedToday = completedExerciseIds.size;
   const totalToday = displayExercises.length;
-  const todayMinutes = todaySessions.reduce((sum, s) => sum + s.duration, 0);
+  const todayMinutes =
+    todaySessions.reduce((sum, s) => sum + s.duration, 0) +
+    todayGuidedSessions.reduce((sum, s) => sum + s.duration, 0);
   const todayAvgScore = Math.round(
     todaySessions.reduce((sum, s) => sum + s.score, 0) / (todaySessions.length || 1)
   );
@@ -321,14 +345,14 @@ export default function PatientPortal() {
     : null;
   const todayProgressPercent = totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
   const firstIncompleteStageIndex = displayExercises.findIndex(
-    (item) => !todaySessions.some((session) => session.exerciseId === item.exercise.id)
+    (item) => !completedExerciseIds.has(item.exercise.id)
   );
   const activeStageIndex =
     firstIncompleteStageIndex >= 0
       ? firstIncompleteStageIndex
       : Math.max(0, displayExercises.length - 1);
   const levelStages = displayExercises.map((item, index) => {
-    const isDone = todaySessions.some((session) => session.exerciseId === item.exercise.id);
+    const isDone = completedExerciseIds.has(item.exercise.id);
     const isActive = index === activeStageIndex && firstIncompleteStageIndex >= 0;
     return {
       item,
@@ -341,6 +365,19 @@ export default function PatientPortal() {
   const activeStage = levelStages[activeStageIndex] ?? levelStages[0];
   const activeGame = getRehabGameForExercise(activeStage?.item.exercise.id);
   const hasClearedAllStages = totalToday > 0 && completedToday >= totalToday;
+  const openTraining = useCallback(
+    (item: typeof displayExercises[number] | undefined) => {
+      if (!item) return;
+      writeVoiceDialectPreference(planVoiceDialect);
+      window.dispatchEvent(new Event('rehab-voice-dialect-change'));
+      if (isGuidedTrackingMode(item.trackingMode)) {
+        navigate(`/patient/guided/${item.id}`);
+        return;
+      }
+      navigate(`/patient/rehab/${item.exercise.id}`);
+    },
+    [navigate, planVoiceDialect]
+  );
   const mapPositions = [
     { left: 18, top: 66 },
     { left: 39, top: 54 },
@@ -739,9 +776,21 @@ export default function PatientPortal() {
               {hasClearedAllStages ? '今天辛苦了' : activeStage?.item.exercise.name ?? '等待處方'}
             </p>
             {!hasClearedAllStages && activeStage && (
-              <p className="mt-1 max-w-60 truncate text-sm sm:text-base font-black text-amber-600">
-                {activeGame.shortTitle}
-              </p>
+              <div className="mt-1 flex max-w-72 flex-wrap gap-2">
+                <span className="truncate text-sm sm:text-base font-black text-amber-600">
+                  {activeGame.shortTitle}
+                </span>
+                <span
+                  className="rounded-full border px-2 py-0.5 text-xs font-black"
+                  style={{
+                    background: activeStage.item.safetyLabel.bg,
+                    color: activeStage.item.safetyLabel.text,
+                    borderColor: activeStage.item.safetyLabel.border,
+                  }}
+                >
+                  {activeStage.item.safetyLabel.shortLabel}
+                </span>
+              </div>
             )}
           </div>
 
@@ -769,9 +818,7 @@ export default function PatientPortal() {
                 disabled={!isAvailable}
                 onClick={() => {
                   if (!isAvailable) return;
-                  writeVoiceDialectPreference(planVoiceDialect);
-                  window.dispatchEvent(new Event('rehab-voice-dialect-change'));
-                  navigate(`/patient/rehab/${ex.id}`);
+                  openTraining(stage.item);
                 }}
                 className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-transform active:scale-[0.96] ${
                   stage.isActive ? 'scale-110' : ''
@@ -863,13 +910,8 @@ export default function PatientPortal() {
             <button
               type="button"
               onClick={() => {
-                const target = hasClearedAllStages
-                  ? levelStages[0]?.item.exercise.id
-                  : activeStage?.item.exercise.id;
-                if (!target) return;
-                writeVoiceDialectPreference(planVoiceDialect);
-                window.dispatchEvent(new Event('rehab-voice-dialect-change'));
-                navigate(`/patient/rehab/${target}`);
+                const target = hasClearedAllStages ? levelStages[0]?.item : activeStage?.item;
+                openTraining(target);
               }}
               className="min-h-16 rounded-full bg-yellow-300 px-8 text-2xl sm:text-3xl font-black text-slate-900 shadow-xl ring-4 ring-white active:scale-[0.96]"
             >
@@ -1052,11 +1094,13 @@ export default function PatientPortal() {
               <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 md:gap-5">
                 {displayExercises.map((item) => {
                   const ex = item.exercise;
-                  const isDone = todaySessions.some((s) => s.exerciseId === ex.id);
+                  const isDone = completedExerciseIds.has(ex.id);
                   const categoryTheme: Record<string, { bg: string; mark: string }> = {
                     上肢: { bg: 'from-sky-100/70 to-blue-50/70', mark: '💪' },
                     下肢: { bg: 'from-emerald-100/70 to-teal-50/70', mark: '🦵' },
                     核心: { bg: 'from-amber-100/70 to-orange-50/70', mark: '🧘' }, //暫時無使用此分類
+                    頸部: { bg: 'from-cyan-100/70 to-sky-50/70', mark: '🧘' },
+                    踝足: { bg: 'from-lime-100/70 to-emerald-50/70', mark: '🦶' },
                   };
                   const theme = categoryTheme[ex.category] ?? { bg: 'from-slate-100/70 to-slate-50/70', mark: '🏃' };
 
@@ -1066,9 +1110,7 @@ export default function PatientPortal() {
                       whileHover={{ y: -2 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => {
-                        writeVoiceDialectPreference(planVoiceDialect);
-                        window.dispatchEvent(new Event('rehab-voice-dialect-change'));
-                        navigate(`/patient/rehab/${ex.id}`);
+                        openTraining(item);
                       }}
                       className={`relative flex flex-col overflow-hidden p-5 sm:p-6 min-h-[11.5rem] sm:min-h-[12.5rem] md:min-h-52 rounded-2xl text-left transition-all shadow-md border ${
                         isDone ? 'bg-green-50 border-green-100' : 'bg-white border-gray-100'
@@ -1107,6 +1149,16 @@ export default function PatientPortal() {
                             </span>
                             <span className="inline-flex rounded-full bg-white/70 border border-slate-100 px-3 py-1 text-base sm:text-lg font-bold text-slate-600">
                               {item.sets}組 x {item.reps}次
+                            </span>
+                            <span
+                              className="inline-flex rounded-full border px-3 py-1 text-base sm:text-lg font-black shadow-sm"
+                              style={{
+                                background: item.safetyLabel.bg,
+                                color: item.safetyLabel.text,
+                                borderColor: item.safetyLabel.border,
+                              }}
+                            >
+                              {item.safetyLabel.shortLabel}
                             </span>
                           </div>
                         </div>

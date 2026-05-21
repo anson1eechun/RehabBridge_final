@@ -2,7 +2,7 @@
 // DoctorPortal — 醫師端 (功能增強版：保留原色調與數據)
 // ============================================================
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   ArrowLeft, Users, Activity, BarChart3, Settings,
@@ -33,14 +33,146 @@ import {
   type PrescriptionEditableFields,
 } from '../data/prescriptionStore';
 import { buildAiDifficultySuggestion, getSuggestionTone } from '../data/aiDifficultyEngine';
+import {
+  angleSupportedProfessionalExercises,
+  manualReviewProfessionalExercises,
+  professionalExerciseLibrary,
+} from '../data/professionalExerciseLibrary';
+import {
+  getExerciseTrackingMode,
+  getGuidedExerciseConfig,
+  isGuidedTrackingMode,
+} from '../data/guidedExerciseCatalog';
+import { type GuidedSessionRecord, useGuidedSessionRecords } from '../data/guidedSessionStore';
+import { getExerciseSafetyLabel, getSafetyLabelByMode } from '../data/exerciseSafetyCatalog';
+import { getDemoPatientStory } from '../data/demoPatientStory';
 
 const DOCTOR = mockDoctors[0];
+
+const buildPrescriptionDraft = (exerciseId = 'knee_flexion') => {
+  const exercise = mockExercises.find((item) => item.id === exerciseId) ?? mockExercises[0];
+  return {
+    exerciseId: exercise?.id ?? 'knee_flexion',
+    targetAngle: exercise?.targetAngle ?? 90,
+    reps: exercise?.reps ?? 10,
+    sets: exercise?.sets ?? 3,
+    holdSeconds: exercise?.holdSeconds ?? 3,
+    difficultyLevel: 2,
+    trackingMode: exercise?.trackingMode ?? 'angle',
+  };
+};
+
+const exerciseBodyAreaOrder: Record<string, number> = {
+  膝蓋: 0,
+  大腿: 1,
+  髖部: 2,
+  功能性: 3,
+  '臀腿/核心': 4,
+  肩膀: 10,
+  手肘: 11,
+  上背: 12,
+  胸肩: 13,
+};
+
+type AbnormalSeverity = 'high' | 'medium' | 'watch';
+
+const abnormalSeverityStyle: Record<AbnormalSeverity, { label: string; bg: string; text: string; border: string }> = {
+  high: { label: '高優先', bg: '#FEF2F2', text: '#B91C1C', border: '#FECACA' },
+  medium: { label: '需留意', bg: '#FFFBEB', text: '#B45309', border: '#FDE68A' },
+  watch: { label: '觀察', bg: '#EFF6FF', text: '#1D4ED8', border: '#BFDBFE' },
+};
+
+function addAbnormalReport(
+  list: Array<{
+    id: string;
+    exerciseName: string;
+    date: string;
+    title: string;
+    detail: string;
+    severity: AbnormalSeverity;
+    painScore: number;
+  }>,
+  record: GuidedSessionRecord,
+  title: string,
+  detail: string,
+  severity: AbnormalSeverity
+) {
+  const exerciseName = mockExercises.find((exercise) => exercise.id === record.exerciseId)?.name ?? record.exerciseId;
+  list.push({
+    id: `${record.id}-${title}`,
+    exerciseName,
+    date: record.date,
+    title,
+    detail,
+    severity,
+    painScore: record.painScore,
+  });
+}
+
+function buildGuidedAbnormalReports(records: GuidedSessionRecord[]) {
+  const list: Array<{
+    id: string;
+    exerciseName: string;
+    date: string;
+    title: string;
+    detail: string;
+    severity: AbnormalSeverity;
+    painScore: number;
+  }> = [];
+
+  records.forEach((record) => {
+    if (record.painScore >= 7) {
+      addAbnormalReport(list, record, '疼痛偏高', `疼痛 ${record.painScore}/10，建議先暫停升階並確認動作。`, 'high');
+    } else if (record.painScore >= 4) {
+      addAbnormalReport(list, record, '疼痛需觀察', `疼痛 ${record.painScore}/10，下次回報若升高需調整劑量。`, 'medium');
+    }
+
+    if (record.stoppedEarly) {
+      addAbnormalReport(list, record, '中途停止', '患者按下痛/不舒服，未完成原定訓練量。', 'high');
+    }
+
+    record.alerts.forEach((alert) => {
+      addAbnormalReport(list, record, alert, '系統依患者回報自動標記，請於回診或訊息中追蹤。', 'medium');
+    });
+
+    Object.entries(record.answers).forEach(([key, value]) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.includes('dizziness') && Number(value) >= 7) {
+        addAbnormalReport(list, record, '頭暈偏高', `頭暈 ${value}/10，頸部動作不建議自行增加。`, 'high');
+      }
+      if ((lowerKey.includes('numbness') || lowerKey.includes('radiating')) && value === true) {
+        addAbnormalReport(list, record, '麻或放射症狀', '患者回報麻、刺痛或往手臂延伸，需重新評估。', 'high');
+      }
+      if (lowerKey.includes('swelling') && value === true) {
+        addAbnormalReport(list, record, '腫脹/發熱', '踝足訓練後回報腫脹或發熱，可能需要減量。', 'medium');
+      }
+      if (lowerKey.includes('instability') && Number(value) >= 7) {
+        addAbnormalReport(list, record, '不穩感偏高', `不穩感 ${value}/10，建議先降低阻力並確認支撐。`, 'high');
+      }
+      if (lowerKey.includes('shrugging') && value === true) {
+        addAbnormalReport(list, record, '疑似聳肩代償', '肩胛訓練時回報聳肩，建議調整姿勢或降低保持秒數。', 'watch');
+      }
+      if (lowerKey.includes('backcompensation') && value === true) {
+        addAbnormalReport(list, record, '腰部代償', '臀肌或核心訓練時下背跟著用力，需提醒縮小動作。', 'medium');
+      }
+    });
+  });
+
+  const severityRank: Record<AbnormalSeverity, number> = { high: 0, medium: 1, watch: 2 };
+  return list.sort((a, b) => {
+    if (severityRank[a.severity] !== severityRank[b.severity]) {
+      return severityRank[a.severity] - severityRank[b.severity];
+    }
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
+}
 
 export default function DoctorPortal() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'patients' | 'analytics' | 'prescriptions'>('patients');
   const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
   const [editingRx, setEditingRx] = useState<string | null>(null);
+  const [isExerciseLibraryOpen, setIsExerciseLibraryOpen] = useState(false);
   const [editValues, setEditValues] = useState<PrescriptionEditableFields>({
     targetAngle: 90,
     reps: 10,
@@ -51,18 +183,82 @@ export default function DoctorPortal() {
 
   // --- 新增：處理「新增處方」彈窗的狀態 ---
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newRx, setNewRx] = useState({
-    exerciseId: 'knee_flexion',
-    targetAngle: 90,
-    reps: 10,
-    sets: 3,
-    holdSeconds: 3,
-    difficultyLevel: 2,
-  });
+  const [newRx, setNewRx] = useState(() => buildPrescriptionDraft());
   const sessionRecords = useSessionRecords();
+  const guidedSessionRecords = useGuidedSessionRecords();
   const prescriptions = usePrescriptions();
 
   const patients = mockPatients.filter(p => p.doctorId === DOCTOR.id);
+  const exerciseOptionsByBodyArea = useMemo(() => {
+    const groups = mockExercises.reduce<Record<string, typeof mockExercises>>((acc, exercise) => {
+      const key = `${exercise.category} / ${exercise.bodyArea}`;
+      acc[key] = [...(acc[key] ?? []), exercise];
+      return acc;
+    }, {});
+
+    return Object.entries(groups)
+      .sort(([a], [b]) => {
+        const aArea = a.split(' / ')[1] ?? a;
+        const bArea = b.split(' / ')[1] ?? b;
+        const aOrder = exerciseBodyAreaOrder[aArea] ?? 99;
+        const bOrder = exerciseBodyAreaOrder[bArea] ?? 99;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.localeCompare(b, 'zh-Hant');
+      })
+      .map(([label, items]) => [
+        label,
+        [...items].sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')),
+      ] as const);
+  }, []);
+  const selectedProfessionalExercise = professionalExerciseLibrary.find(
+    (item) => item.matchedExerciseId === newRx.exerciseId
+  );
+  const selectedNewExercise = mockExercises.find((item) => item.id === newRx.exerciseId);
+  const selectedTrackingMode = getExerciseTrackingMode(selectedNewExercise, newRx);
+  const selectedSafetyLabel = getExerciseSafetyLabel(selectedNewExercise, newRx);
+  const selectedGuidedConfig = isGuidedTrackingMode(selectedTrackingMode)
+    ? getGuidedExerciseConfig(newRx.exerciseId)
+    : null;
+  const libraryAreaSummary = useMemo(() => {
+    const summary = professionalExerciseLibrary.reduce<
+      Record<string, { total: number; supported: number; manual: number }>
+    >((acc, item) => {
+      const key = `${item.category} / ${item.bodyArea}`;
+      const current = acc[key] ?? { total: 0, supported: 0, manual: 0 };
+      current.total += 1;
+      if (item.trackingStatus === 'angle-supported') current.supported += 1;
+      if (item.trackingStatus === 'manual-review') current.manual += 1;
+      acc[key] = current;
+      return acc;
+    }, {});
+
+    return Object.entries(summary).sort(([a], [b]) => a.localeCompare(b, 'zh-Hant'));
+  }, []);
+  const exerciseLibraryCards = useMemo(() => {
+    return professionalExerciseLibrary
+      .map((item) => {
+        const exercise = item.matchedExerciseId
+          ? mockExercises.find((candidate) => candidate.id === item.matchedExerciseId)
+          : undefined;
+        const safetyLabel = exercise
+          ? getExerciseSafetyLabel(exercise)
+          : getSafetyLabelByMode(item.trackingStatus === 'manual-review' ? 'manual' : 'angle');
+        const canPrescribe = Boolean(exercise);
+        return {
+          item,
+          exercise,
+          safetyLabel,
+          canPrescribe,
+        };
+      })
+      .sort((a, b) => {
+        const aOrder = exerciseBodyAreaOrder[a.item.bodyArea] ?? 99;
+        const bOrder = exerciseBodyAreaOrder[b.item.bodyArea] ?? 99;
+        if (a.item.category !== b.item.category) return a.item.category.localeCompare(b.item.category, 'zh-Hant');
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return a.item.name.localeCompare(b.item.name, 'zh-Hant');
+      });
+  }, []);
 
   const analyticsData = [
     { name: '王大明', compliance: 85, avgAngle: 118, target: 120, score: 89 },
@@ -135,6 +331,13 @@ export default function DoctorPortal() {
   const selectedPatientData = selectedPatient ? mockPatients.find(p => p.id === selectedPatient) : null;
   const selectedPrescriptions = selectedPatient ? prescriptions.filter(p => p.patientId === selectedPatient) : [];
   const selectedSessions = selectedPatient ? sessionRecords.filter(s => s.patientId === selectedPatient) : [];
+  const selectedGuidedReports = selectedPatient
+    ? guidedSessionRecords.filter((record) => record.patientId === selectedPatient)
+    : [];
+  const abnormalReports = buildGuidedAbnormalReports(selectedGuidedReports);
+  const abnormalHighCount = abnormalReports.filter((item) => item.severity === 'high').length;
+  const latestGuidedPain = selectedGuidedReports[0]?.painScore ?? null;
+  const demoStory = getDemoPatientStory(selectedPatient);
   const newRxDifficulty = getDifficultyMeta(newRx.difficultyLevel);
   const editDifficulty = getDifficultyMeta(editValues.difficultyLevel);
   const totalLeaderboard = buildScoreLeaderboard(sessionRecords, patients, {
@@ -228,6 +431,7 @@ export default function DoctorPortal() {
       sets: newRx.sets || exercise?.sets || 3,
       holdSeconds: newRx.holdSeconds || exercise?.holdSeconds || 3,
       difficultyLevel: normalizeDifficultyLevel(newRx.difficultyLevel),
+      trackingMode: getExerciseTrackingMode(exercise, newRx),
     };
 
     if (existingRx) {
@@ -255,6 +459,120 @@ export default function DoctorPortal() {
       
       {/* ── 新增處方彈出視窗 (Modal) ── */}
       <AnimatePresence>
+        {isExerciseLibraryOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(15, 23, 42, 0.45)' }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="flex max-h-[90dvh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+            >
+              <div className="border-b border-gray-100 px-6 py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="inline-flex rounded-full bg-purple-100 px-3 py-1 text-xs font-black text-purple-700">
+                      Professional Exercise Library
+                    </div>
+                    <h3 className="mt-3 text-2xl font-black text-gray-900">復健動作庫總覽</h3>
+                    <p className="mt-1 max-w-3xl text-sm font-semibold leading-relaxed text-gray-500">
+                      依復健部位整理所有動作，並標示追蹤模式、目的、注意事項與是否能直接開處方。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsExerciseLibraryOpen(false)}
+                    className="rounded-2xl bg-gray-100 p-3 text-gray-500 hover:bg-gray-200"
+                    aria-label="關閉動作庫總覽"
+                  >
+                    <X size={22} />
+                  </button>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {[
+                    { label: '可直接開處方', value: exerciseLibraryCards.filter((card) => card.canPrescribe).length, bg: '#ECFDF5', text: '#047857' },
+                    { label: '鏡頭追蹤', value: exerciseLibraryCards.filter((card) => card.safetyLabel.mode === 'angle').length, bg: '#EFF6FF', text: '#1D4ED8' },
+                    { label: '引導/人工', value: exerciseLibraryCards.filter((card) => card.safetyLabel.mode !== 'angle').length, bg: '#FFFBEB', text: '#B45309' },
+                  ].map((stat) => (
+                    <div key={stat.label} className="rounded-2xl px-4 py-3 text-center" style={{ background: stat.bg }}>
+                      <div className="text-3xl font-black" style={{ color: stat.text }}>{stat.value}</div>
+                      <div className="text-xs font-bold" style={{ color: stat.text }}>{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {exerciseLibraryCards.map(({ item, exercise, safetyLabel, canPrescribe }) => (
+                    <div key={item.id} className="flex min-h-[17rem] flex-col rounded-2xl border border-gray-100 bg-gray-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-black text-gray-500">
+                              {item.category} / {item.bodyArea}
+                            </span>
+                            <span
+                              className="rounded-full border px-2 py-1 text-[11px] font-black"
+                              style={{ background: safetyLabel.bg, color: safetyLabel.text, borderColor: safetyLabel.border }}
+                            >
+                              {safetyLabel.shortLabel}
+                            </span>
+                          </div>
+                          <h4 className="mt-3 truncate text-lg font-black text-gray-900">{item.name}</h4>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-black ${
+                            canPrescribe ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {canPrescribe ? '可開處方' : '僅列入庫'}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 space-y-3 text-sm">
+                        <div>
+                          <div className="text-xs font-black text-gray-400">動作目的</div>
+                          <p className="mt-1 font-bold leading-relaxed text-gray-700">{item.summary}</p>
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-gray-400">注意事項</div>
+                          <p className="mt-1 font-semibold leading-relaxed text-gray-500">{item.safetyNote}</p>
+                        </div>
+                        <div>
+                          <div className="text-xs font-black text-gray-400">模式說明</div>
+                          <p className="mt-1 font-semibold leading-relaxed" style={{ color: safetyLabel.text }}>
+                            {safetyLabel.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-4">
+                        {canPrescribe ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewRx(buildPrescriptionDraft(exercise!.id));
+                              setIsExerciseLibraryOpen(false);
+                              setIsAddModalOpen(true);
+                            }}
+                            className="w-full rounded-xl bg-purple-700 px-3 py-2 text-sm font-black text-white shadow-sm"
+                          >
+                            直接開這個處方
+                          </button>
+                        ) : (
+                          <div className="rounded-xl bg-white px-3 py-2 text-center text-sm font-bold text-gray-400">
+                            需治療師確認後再加入患者訓練
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {isAddModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.4)' }}>
             <motion.div 
@@ -275,10 +593,67 @@ export default function DoctorPortal() {
                   <select 
                     className="w-full p-3 rounded-xl border border-gray-100 bg-gray-50 font-bold text-gray-700"
                     value={newRx.exerciseId}
-                    onChange={(e) => setNewRx({...newRx, exerciseId: e.target.value})}
+                    onChange={(e) => setNewRx(buildPrescriptionDraft(e.target.value))}
                   >
-                    {mockExercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+                    {exerciseOptionsByBodyArea.map(([groupLabel, exercises]) => (
+                      <optgroup key={groupLabel} label={groupLabel}>
+                        {exercises.map((ex) => (
+                          <option key={ex.id} value={ex.id}>
+                            {ex.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
+                  {selectedProfessionalExercise && (
+                    <div className="mt-2 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-emerald-700">
+                          {selectedProfessionalExercise.statusLabel}
+                        </span>
+                        <span className="text-[11px] font-bold text-emerald-600">
+                          {selectedProfessionalExercise.bodyArea}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-emerald-700">
+                        {selectedProfessionalExercise.summary}
+                      </p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-emerald-600">
+                        {selectedProfessionalExercise.safetyNote}
+                      </p>
+                    </div>
+                  )}
+                  <div
+                    className="mt-2 rounded-xl border px-3 py-2"
+                    style={{
+                      background: selectedSafetyLabel.bg,
+                      borderColor: selectedSafetyLabel.border,
+                      color: selectedSafetyLabel.text,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-black">{selectedSafetyLabel.label}</span>
+                      <span className="text-[11px] font-bold">安全標籤</span>
+                    </div>
+                    <p className="mt-1 text-[11px] font-semibold leading-relaxed">
+                      {selectedSafetyLabel.description} {selectedSafetyLabel.stopRule}
+                    </p>
+                  </div>
+                  {selectedGuidedConfig && (
+                    <div className="mt-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-amber-700">
+                          {selectedTrackingMode === 'timed' ? '計時引導處方' : '人工回報處方'}
+                        </span>
+                        <span className="text-[11px] font-bold text-amber-600">
+                          {selectedGuidedConfig.reportQuestions.length} 個專屬回報題
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] font-semibold leading-relaxed text-amber-700">
+                        {selectedGuidedConfig.headline}。患者端會顯示圖示步驟、文字提醒，完成後回報疼痛、代償與症狀。
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -492,16 +867,173 @@ export default function DoctorPortal() {
                 {selectedPatientData && (
                   <div className="flex flex-col gap-4">
                     <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                          style={{ background: 'linear-gradient(135deg, #7B1FA2, #4A148C)', fontSize: 24, color: 'white', fontWeight: 700 }}>
-                          {selectedPatientData.avatar}
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+                            style={{ background: 'linear-gradient(135deg, #7B1FA2, #4A148C)', fontSize: 24, color: 'white', fontWeight: 700 }}>
+                            {selectedPatientData.avatar}
+                          </div>
+                          <div>
+                            <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A2035' }}>{selectedPatientData.name}</h2>
+                            <p style={{ fontSize: 14, color: '#546E7A' }}>{selectedPatientData.age}歲 · {selectedPatientData.diagnosis}</p>
+                            <p style={{ fontSize: 13, color: '#90A4AE', marginTop: 2 }}>家屬聯絡：{selectedPatientData.familyContact}</p>
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddModalOpen(true)}
+                          className="flex min-h-12 items-center justify-center gap-2 rounded-2xl px-5 py-3 text-base font-black text-white shadow-lg"
+                          style={{ background: '#5E35B1' }}
+                        >
+                          <Plus size={18} />
+                          新增復健處方
+                        </button>
+                      </div>
+                    </div>
+
+                    {demoStory && (
+                      <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'linear-gradient(135deg, #FFFFFF 0%, #F5F3FF 100%)', border: '1px solid #DDD6FE' }}>
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="max-w-3xl">
+                            <div className="inline-flex rounded-full bg-purple-100 px-3 py-1 text-xs font-black text-purple-700">
+                              競賽 Demo 病人故事
+                            </div>
+                            <h3 className="mt-3 text-xl font-black text-gray-900">{demoStory.title}</h3>
+                            <p className="mt-2 text-sm font-bold leading-relaxed text-gray-600">{demoStory.hook}</p>
+                            <p className="mt-2 text-sm leading-relaxed text-gray-500">{demoStory.judgePitch}</p>
+                          </div>
+                          <div className="grid min-w-[18rem] grid-cols-1 gap-2">
+                            {demoStory.todayResult.map((result) => (
+                              <div key={result} className="rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-purple-700 shadow-sm">
+                                {result}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                          {demoStory.demoFlow.map((step, index) => (
+                            <div key={step} className="flex gap-3 rounded-xl bg-white/80 px-3 py-2">
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-purple-600 text-xs font-black text-white">
+                                {index + 1}
+                              </span>
+                              <span className="text-xs font-bold leading-relaxed text-gray-600">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                         <div>
-                          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#1A2035' }}>{selectedPatientData.name}</h2>
-                          <p style={{ fontSize: 14, color: '#546E7A' }}>{selectedPatientData.age}歲 · {selectedPatientData.diagnosis}</p>
-                          <p style={{ fontSize: 13, color: '#90A4AE', marginTop: 2 }}>家屬聯絡：{selectedPatientData.familyContact}</p>
+                          <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1A2035' }}>異常回報總表</h3>
+                          <p className="mt-1 max-w-2xl text-sm font-semibold leading-relaxed text-gray-500">
+                            整合引導式復健中的疼痛、頭暈、麻、腫脹、代償與中途停止，讓醫師快速決定是否降階、暫停或聯絡患者。
+                          </p>
                         </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="rounded-xl bg-red-50 px-4 py-3">
+                            <div className="text-2xl font-black text-red-700">{abnormalHighCount}</div>
+                            <div className="text-xs font-bold text-red-600">高優先</div>
+                          </div>
+                          <div className="rounded-xl bg-amber-50 px-4 py-3">
+                            <div className="text-2xl font-black text-amber-700">{abnormalReports.length}</div>
+                            <div className="text-xs font-bold text-amber-600">總警示</div>
+                          </div>
+                          <div className="rounded-xl bg-blue-50 px-4 py-3">
+                            <div className="text-2xl font-black text-blue-700">{latestGuidedPain === null ? '--' : `${latestGuidedPain}`}</div>
+                            <div className="text-xs font-bold text-blue-600">最新疼痛</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        {abnormalReports.length > 0 ? (
+                          abnormalReports.slice(0, 6).map((report) => {
+                            const style = abnormalSeverityStyle[report.severity];
+                            return (
+                              <div
+                                key={report.id}
+                                className="rounded-xl border p-3"
+                                style={{ background: style.bg, borderColor: style.border }}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="text-sm font-black" style={{ color: style.text }}>
+                                      {report.exerciseName} · {report.title}
+                                    </div>
+                                    <p className="mt-1 text-xs font-bold leading-relaxed text-gray-600">
+                                      {report.detail}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-black" style={{ color: style.text }}>
+                                    {style.label}
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between text-[11px] font-bold text-gray-500">
+                                  <span>{report.date}</span>
+                                  <span>疼痛 {report.painScore}/10</span>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-400">
+                            目前沒有異常回報，完成引導式復健後會自動出現在這裡。
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl p-5 shadow-sm" style={{ background: 'white' }}>
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <h3 style={{ fontSize: 16, fontWeight: 800, color: '#1A2035' }}>
+                            物理治療師專業動作庫
+                          </h3>
+                          <p className="mt-1 max-w-2xl text-sm font-semibold leading-relaxed text-gray-500">
+                            已依復健部位整理 PDF 動作。可追蹤的項目會出現在新增處方選單；頸部、踝足細部與肩胛等動作先保留人工確認，避免用鏡頭做不精準判定。
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setIsExerciseLibraryOpen(true)}
+                            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-purple-700 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-purple-800"
+                          >
+                            動作庫總覽
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-3">
+                          <div className="rounded-xl bg-emerald-50 px-4 py-3">
+                            <div className="text-2xl font-black text-emerald-700">
+                              {angleSupportedProfessionalExercises.length}
+                            </div>
+                            <div className="text-xs font-bold text-emerald-600">可開鏡頭處方</div>
+                          </div>
+                          <div className="rounded-xl bg-amber-50 px-4 py-3">
+                            <div className="text-2xl font-black text-amber-700">
+                              {manualReviewProfessionalExercises.length}
+                            </div>
+                            <div className="text-xs font-bold text-amber-600">需人工確認</div>
+                          </div>
+                          <div className="rounded-xl bg-purple-50 px-4 py-3">
+                            <div className="text-2xl font-black text-purple-700">
+                              {professionalExerciseLibrary.length}
+                            </div>
+                            <div className="text-xs font-bold text-purple-600">總動作</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                        {libraryAreaSummary.slice(0, 9).map(([label, stat]) => (
+                          <div key={label} className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2">
+                            <div className="text-sm font-black text-gray-700">{label}</div>
+                            <div className="mt-1 text-xs font-bold text-gray-500">
+                              {stat.supported > 0 ? `${stat.supported} 項可偵測` : '先列為人工確認'}
+                              {stat.manual > 0 ? ` · ${stat.manual} 項待確認` : ''}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
@@ -520,10 +1052,21 @@ export default function DoctorPortal() {
                           const ex = mockExercises.find(e => e.id === rx.exerciseId);
                           const isEditing = editingRx === rx.id;
                           const plan = resolvePrescriptionPlan(rx, ex);
-                          const aiSuggestion = buildAiDifficultySuggestion(rx, ex, sessionRecords);
-                          const aiTone = getSuggestionTone(aiSuggestion.direction);
+                          const trackingMode = getExerciseTrackingMode(ex, rx);
+                          const isGuided = isGuidedTrackingMode(trackingMode);
+                          const safetyLabel = getExerciseSafetyLabel(ex, rx);
+                          const guidedConfig = getGuidedExerciseConfig(ex?.id);
+                          const latestGuidedReport = guidedSessionRecords.find(
+                            (record) =>
+                              record.patientId === selectedPatient &&
+                              record.exerciseId === rx.exerciseId
+                          );
+                          const aiSuggestion = isGuided
+                            ? null
+                            : buildAiDifficultySuggestion(rx, ex, sessionRecords);
+                          const aiTone = aiSuggestion ? getSuggestionTone(aiSuggestion.direction) : null;
                           const canApplyAiSuggestion =
-                            aiSuggestion.direction === 'increase' || aiSuggestion.direction === 'decrease';
+                            aiSuggestion?.direction === 'increase' || aiSuggestion?.direction === 'decrease';
                           return (
                             <div key={rx.id} className="rounded-xl p-4"
                               style={{ background: '#F8F4FF', border: '1px solid #E1D5FF' }}>
@@ -531,6 +1074,21 @@ export default function DoctorPortal() {
                                 <div>
                                   <span style={{ fontSize: 15, fontWeight: 700, color: '#1A2035' }}>{ex?.name}</span>
                                   <span className="ml-2 px-2 py-0.5 rounded-full text-xs" style={{ background: '#EDE7F6', color: '#7B1FA2' }}>{rx.frequency}</span>
+                                  {ex && (
+                                    <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold" style={{ background: '#ECFDF5', color: '#047857' }}>
+                                      {ex.category} / {ex.bodyArea}
+                                    </span>
+                                  )}
+                                  <span
+                                    className="ml-2 px-2 py-0.5 rounded-full text-xs font-bold"
+                                    style={{
+                                      background: safetyLabel.bg,
+                                      color: safetyLabel.text,
+                                      border: `1px solid ${safetyLabel.border}`,
+                                    }}
+                                  >
+                                    {safetyLabel.label}
+                                  </span>
                                 </div>
                                 <button onClick={() => isEditing ? setEditingRx(null) : handleEditRx(rx.id)} className="p-1.5 rounded-lg hover:bg-purple-100"><Edit3 size={15} style={{ color: '#7B1FA2' }} /></button>
                               </div>
@@ -592,29 +1150,57 @@ export default function DoctorPortal() {
                                 </motion.div>
                               ) : (
                                 <>
-                                <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-purple-700 border border-purple-100">
-                                  第 {plan.difficultyLevel} 關 / {plan.difficultyLabel}
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-                                  {[
-                                    { label: '角度', value: `${plan.effectiveTargetAngle}°` },
-                                    { label: '誤差', value: `±${plan.effectiveTolerance}°` },
-                                    { label: '組數', value: `${plan.effectiveSets}組` },
-                                    { label: '次數', value: `${plan.effectiveReps}次` },
-                                    { label: '保持', value: `${plan.effectiveHoldSeconds}s` },
-                                    { label: '安全', value: `${plan.safetyMinAngle}°-${plan.safetyMaxAngle}°` },
-                                  ].map(item => (
-                                    <div key={item.label} className="rounded-lg p-2 text-center bg-white">
-                                      <div style={{ fontSize: 13, fontWeight: 700, color: '#4A148C' }}>{item.value}</div>
-                                      <div style={{ fontSize: 10, color: '#90A4AE' }}>{item.label}</div>
+                                {isGuided ? (
+                                  <>
+                                    <div className="mb-3 inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700 border border-amber-100">
+                                      {trackingMode === 'timed' ? '圖示計時引導' : '圖示人工回報'} · {guidedConfig.reportQuestions.length} 個回報題
                                     </div>
-                                  ))}
-                                </div>
-                                <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">
-                                  安全範圍：{plan.safetyMinAngle}°-{plan.safetyMaxAngle}°。疼痛 7/10 以上會先暫停訓練並通知照護團隊。
-                                </p>
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                                      {[
+                                        { label: '組數', value: `${rx.sets}組` },
+                                        { label: '次數', value: `${rx.reps}次` },
+                                        { label: '保持', value: `${rx.holdSeconds}s` },
+                                        { label: '疼痛', value: latestGuidedReport ? `${latestGuidedReport.painScore}/10` : '未回報' },
+                                        { label: '狀態', value: latestGuidedReport?.alerts.length ? '需留意' : latestGuidedReport ? '穩定' : '待完成' },
+                                      ].map(item => (
+                                        <div key={item.label} className="rounded-lg p-2 text-center bg-white">
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: '#92400E' }}>{item.value}</div>
+                                          <div style={{ fontSize: 10, color: '#90A4AE' }}>{item.label}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-700">
+                                      {guidedConfig.headline}。患者會看圖示步驟並回報：{guidedConfig.reportQuestions.map((q) => q.label.replace('？', '')).slice(0, 3).join('、')}。
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="mb-3 inline-flex rounded-full bg-white px-3 py-1 text-xs font-black text-purple-700 border border-purple-100">
+                                      第 {plan.difficultyLevel} 關 / {plan.difficultyLabel}
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                                      {[
+                                        { label: '角度', value: `${plan.effectiveTargetAngle}°` },
+                                        { label: '誤差', value: `±${plan.effectiveTolerance}°` },
+                                        { label: '組數', value: `${plan.effectiveSets}組` },
+                                        { label: '次數', value: `${plan.effectiveReps}次` },
+                                        { label: '保持', value: `${plan.effectiveHoldSeconds}s` },
+                                        { label: '安全', value: `${plan.safetyMinAngle}°-${plan.safetyMaxAngle}°` },
+                                      ].map(item => (
+                                        <div key={item.label} className="rounded-lg p-2 text-center bg-white">
+                                          <div style={{ fontSize: 13, fontWeight: 700, color: '#4A148C' }}>{item.value}</div>
+                                          <div style={{ fontSize: 10, color: '#90A4AE' }}>{item.label}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                    <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">
+                                      安全範圍：{plan.safetyMinAngle}°-{plan.safetyMaxAngle}°。疼痛 7/10 以上會先暫停訓練並通知照護團隊。
+                                    </p>
+                                  </>
+                                )}
                                 </>
                               )}
+                              {aiSuggestion && aiTone && (
                               <div
                                 className="mt-3 rounded-xl border p-3"
                                 style={{ background: aiTone.bg, borderColor: aiTone.border }}
@@ -649,6 +1235,7 @@ export default function DoctorPortal() {
                                   )}
                                 </div>
                               </div>
+                              )}
                             </div>
                           );
                         })}

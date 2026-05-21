@@ -293,7 +293,29 @@ export const fallbackRehabGame: RehabGameConfig = {
   },
 };
 
+const rehabGameAlias: Record<string, string> = {
+  shoulder_press_band: 'shoulder_flexion',
+  standing_row_band: 'elbow_flexion',
+  seated_row_band: 'elbow_flexion',
+  push_up_supported: 'elbow_extension',
+  biceps_curl_band: 'elbow_flexion',
+  overhead_triceps_extension: 'elbow_extension',
+  shoulder_lateral_raise_band: 'shoulder_abduction',
+  seated_marching: 'leg_raise',
+  long_arc_quad: 'knee_extension',
+  sit_to_stand: 'squat',
+  band_squat: 'squat',
+  split_squat_band: 'squat',
+  standing_hip_abduction_band: 'hip_abduction',
+  hip_adduction_band: 'hip_abduction',
+  standing_hip_extension_band: 'leg_raise',
+  standing_hip_flexion_band: 'leg_raise',
+  terminal_knee_extension_band: 'knee_extension',
+  hip_bridge: 'leg_raise',
+};
+
 export function getRehabGameForExercise(exerciseId?: string): RehabGameConfig {
   if (!exerciseId) return fallbackRehabGame;
-  return rehabGameCatalog[exerciseId] ?? fallbackRehabGame;
+  const alias = rehabGameAlias[exerciseId];
+  return rehabGameCatalog[exerciseId] ?? (alias ? rehabGameCatalog[alias] : undefined) ?? fallbackRehabGame;
 }

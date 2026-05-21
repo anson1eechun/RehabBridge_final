@@ -6,6 +6,7 @@ import { Bell, MessageCircle, X } from 'lucide-react';
 import Blueprint from './pages/Blueprint';
 import DoctorPortal from './pages/DoctorPortal';
 import FamilyDashboard from './pages/FamilyDashboard';
+import GuidedRehabSession from './pages/GuidedRehabSession';
 import PatientPortal from './pages/PatientPortal';
 import RehabSession from './pages/RehabSession';
 import RoleSelect from './pages/RoleSelect';
@@ -172,6 +173,7 @@ export const router = createBrowserRouter([
       { index: true, Component: RoleSelect },
       { path: 'patient', Component: PatientPortal },
       { path: 'patient/rehab/:exerciseId', Component: RehabSession },
+      { path: 'patient/guided/:prescriptionId', Component: GuidedRehabSession },
       { path: 'family', Component: FamilyDashboard },
       { path: 'doctor', Component: DoctorPortal },
       { path: 'blueprint', Component: Blueprint },
