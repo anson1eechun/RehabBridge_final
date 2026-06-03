@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RehabBridge 系統架構圖</title>
+  <style>
+    :root {
+      --bg: #f4f8f5;
+      --ink: #123524;
+      --muted: #5b7165;
+      --line: #bfd8c8;
+      --card: rgba(255, 255, 255, 0.9);
+      --green: #1f9d55;
+      --teal: #0f9f8f;
+      --blue: #2463eb;
+      --amber: #d68b12;
+      --purple: #7c3aed;
+      --red: #dc2626;
+      --slate: #475569;
+      --shadow: 0 18px 55px rgba(18, 53, 36, 0.12);
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", "PingFang TC", sans-serif;
+      background:
+        radial-gradient(circle at 10% 5%, rgba(34, 197, 94, 0.18), transparent 28rem),
+        radial-gradient(circle at 92% 8%, rgba(20, 184, 166, 0.14), transparent 26rem),
+        linear-gradient(135deg, #f7fbf7 0%, #eef8f2 52%, #f8fafc 100%);
+      padding: 32px;
+    }
+    .page {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.45fr 0.55fr;
+      gap: 22px;
+      align-items: stretch;
+      margin-bottom: 22px;
+    }
+    .hero-main,
+    .hero-side,
+    .section {
+      border: 1px solid rgba(31, 157, 85, 0.18);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+    .hero-main {
+      border-radius: 34px;
+      padding: 34px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-main::after {
+      content: "";
+      position: absolute;
+      right: -72px;
+      top: -80px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(31, 157, 85, 0.22), transparent 68%);
+    }
+    .kicker {
+      color: var(--green);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    h1 {
+      max-width: 940px;
+      margin: 0;
+      color: #0f2f20;
+      font-size: clamp(34px, 4.1vw, 64px);
+      line-height: 1.02;
+      letter-spacing: -0.045em;
+      font-weight: 950;
+    }
+    .subtitle {
+      max-width: 880px;
+      margin: 20px 0 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.75;
+      font-weight: 650;
+    }
+    .hero-side {
+      border-radius: 30px;
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+    }
+    .metric {
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #ecfdf5 0%, #f8fafc 100%);
+      border: 1px solid rgba(31, 157, 85, 0.15);
+    }
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      font-weight: 950;
+      color: #166534;
+    }
+    .metric span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 230px minmax(720px, 1fr) 260px;
+      gap: 18px;
+      align-items: start;
+    }
+    .rail,
+    .architecture,
+    .flow-board {
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(31, 157, 85, 0.17);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .rail-title,
+    .block-title,
+    .flow-title {
+      margin: 0 0 12px;
+      color: #17402b;
+      font-size: 13px;
+      font-weight: 950;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+    }
+    .rail-panel {
+      margin-bottom: 14px;
+      padding: 14px;
+      border-radius: 22px;
+      background: #f7fbf8;
+      border: 1px solid rgba(31, 157, 85, 0.14);
+    }
+    .rail-panel h3 {
+      margin: 0 0 10px;
+      font-size: 15px;
+      color: #14532d;
+    }
+    .pill {
+      display: block;
+      margin-top: 8px;
+      padding: 9px 10px;
+      border-radius: 999px;
+      color: #255442;
+      background: white;
+      border: 1px solid rgba(31, 157, 85, 0.12);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+    }
+    .pill.hot {
+      background: #dcfce7;
+      border-color: #86efac;
+      color: #166534;
+    }
+    .architecture {
+      position: relative;
+      overflow: hidden;
+    }
+    .arch-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+    .arch-header h2 {
+      margin: 0;
+      font-size: 25px;
+      letter-spacing: -0.03em;
+      color: #0f2f20;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .dot.teal { background: var(--teal); }
+    .dot.blue { background: var(--blue); }
+    .dot.amber { background: var(--amber); }
+    .dot.purple { background: var(--purple); }
+    .layer {
+      position: relative;
+      margin: 12px 0;
+      padding: 16px;
+      border-radius: 24px;
+      border: 2px solid transparent;
+    }
+    .layer h3 {
+      margin: 0 0 12px;
+      text-align: center;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+    }
+    .layer.user {
+      background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+      border-color: #22c55e;
+    }
+    .layer.app {
+      background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+      border-color: #3b82f6;
+    }
+    .layer.ai {
+      background: linear-gradient(135deg, #ccfbf1, #99f6e4);
+      border-color: #14b8a6;
+    }
+    .layer.data {
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      border-color: #d97706;
+    }
+    .layer.platform {
+      background: linear-gradient(135deg, #f1f5f9, #e2e8f0);
+      border-color: #64748b;
+    }
+    .grid {
+      display: grid;
+      gap: 10px;
+    }
+    .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid.cols-5 { grid-template-columns: repeat(5, 1fr); }
+    .box {
+      min-height: 74px;
+      padding: 12px 10px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.88);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      color: #163b29;
+      font-size: 13px;
+      font-weight: 900;
+      line-height: 1.3;
+    }
+    .box small {
+      display: block;
+      margin-top: 7px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .box.core {
+      background: white;
+      border: 2px solid #16a34a;
+      box-shadow: 0 10px 24px rgba(22, 163, 74, 0.14);
+    }
+    .arrow {
+      text-align: center;
+      color: #3f6f52;
+      font-size: 20px;
+      font-weight: 950;
+      margin: -2px 0;
+    }
+    .flow-board {
+      margin-top: 18px;
+      grid-column: 1 / -1;
+    }
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(110px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+    .step {
+      position: relative;
+      min-height: 112px;
+      padding: 13px;
+      border-radius: 20px;
+      background: #ffffff;
+      border: 1px solid rgba(31, 157, 85, 0.16);
+    }
+    .step::after {
+      content: "→";
+      position: absolute;
+      right: -12px;
+      top: 42px;
+      color: #86b086;
+      font-weight: 950;
+    }
+    .step:last-child::after {
+      display: none;
+    }
+    .num {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: white;
+      background: var(--green);
+      font-size: 12px;
+      font-weight: 950;
+      margin-bottom: 9px;
+    }
+    .step strong {
+      display: block;
+      color: #123524;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .step span {
+      display: block;
+      margin-top: 7px;
+      color: #64748b;
+      font-size: 11px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+    .footer-note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+      font-weight: 650;
+    }
+    @media (max-width: 1180px) {
+      body {
+        padding: 18px;
+      }
+      .hero,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+      .pipeline {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .step::after {
+        display: none;
+      }
+    }
+    @media (max-width: 760px) {
+      .grid.cols-3,
+      .grid.cols-4,
+      .grid.cols-5,
+      .pipeline {
+        grid-template-columns: 1fr;
+      }
+      .hero-main {
+        padding: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="hero-main">
+        <div class="kicker">RehabBridge / TensorFlow Edge Pose System</div>
+        <h1>基於 TensorFlow 邊緣端點之即時骨架動態感知系統</h1>
+        <p class="subtitle">以瀏覽器或 iOS WebView 作為邊緣推論端點，在本機完成相機擷取、姿態估計、關節角度計算、復健狀態判定、語音回饋與訓練紀錄，形成長者、家屬、醫師三端協作的居家復健閉環。</p>
+      </div>
+      <aside class="hero-side">
+        <div class="metric"><strong>端側推論</strong><span>影像不需上傳雲端，降低延遲與隱私風險</span></div>
+        <div class="metric"><strong>三端閉環</strong><span>長者訓練、家屬監看、醫師調整處方</span></div>
+        <div class="metric"><strong>安全分流</strong><span>angle / timed / manual 三種追蹤模式</span></div>
+      </aside>
+    </section>
+    <section class="layout">
+      <aside class="rail">
+        <p class="rail-title">使用者與場景</p>
+        <div class="rail-panel">
+          <h3>長者端</h3>
+          <span class="pill hot">今日處方</span>
+          <span class="pill">相機訓練</span>
+          <span class="pill">語音陪練</span>
+          <span class="pill">疼痛回報</span>
+        </div>
+        <div class="rail-panel">
+          <h3>家屬端</h3>
+          <span class="pill hot">完成率</span>
+          <span class="pill">週活動</span>
+          <span class="pill">趨勢圖</span>
+          <span class="pill">照護通知</span>
+        </div>
+        <div class="rail-panel">
+          <h3>醫師端</h3>
+          <span class="pill hot">處方調整</span>
+          <span class="pill">AI 難度建議</span>
+          <span class="pill">異常回報</span>
+          <span class="pill">專業動作庫</span>
+        </div>
+      </aside>
+      <section class="architecture">
+        <div class="arch-header">
+          <div>
+            <p class="block-title">Layered Architecture</p>
+            <h2>核心系統分層架構</h2>
+          </div>
+          <div class="legend">
+            <span><i class="dot"></i>使用者</span>
+            <span><i class="dot blue"></i>應用</span>
+            <span><i class="dot teal"></i>AI 感知</span>
+            <span><i class="dot amber"></i>資料</span>
+          </div>
+        </div>
+        <div class="layer user">
+          <h3>使用者入口層</h3>
+          <div class="grid cols-4">
+            <div class="box">RoleSelect<small>長者 / 家屬 / 醫師 / 藍圖入口</small></div>
+            <div class="box">Patient Portal<small>今日計畫與訓練入口</small></div>
+            <div class="box">Family Dashboard<small>照護監看與通知</small></div>
+            <div class="box">Doctor Portal<small>患者與處方管理</small></div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="layer app">
+          <h3>React 應用與互動層</h3>
+          <div class="grid cols-5">
+            <div class="box core">RehabSession<small>即時復健狀態機</small></div>
+            <div class="box">GuidedRehabSession<small>計時 / 人工回報</small></div>
+            <div class="box">SkeletonCanvas<small>骨架與角度疊圖</small></div>
+            <div class="box">AngleGauge<small>目標角度儀表</small></div>
+            <div class="box">RehabGamePanel<small>遊戲化回饋</small></div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="layer ai">
+          <h3>TensorFlow 邊緣感知與語音智慧層</h3>
+          <div class="grid cols-4">
+            <div class="box core">usePoseDetection<small>BlazePose 優先，MoveNet fallback</small></div>
+            <div class="box">angleCalculator<small>三點向量夾角與左右鏡像</small></div>
+            <div class="box">useVoiceCoach<small>Web Speech / 雅婷 / OpenAI</small></div>
+            <div class="box">aiDifficultyEngine<small>規則式升降階建議</small></div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="layer data">
+          <h3>資料與領域狀態層</h3>
+          <div class="grid cols-5">
+            <div class="box">mockData<small>患者、醫師、處方、動作庫</small></div>
+            <div class="box core">sessionStore<small>角度訓練紀錄</small></div>
+            <div class="box">guidedSessionStore<small>引導式回報</small></div>
+            <div class="box">prescriptionStore<small>處方覆寫與難度解析</small></div>
+            <div class="box">messageStore<small>照護聊天與已讀</small></div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="layer platform">
+          <h3>平台與部署層</h3>
+          <div class="grid cols-5">
+            <div class="box">Vite 6<small>開發、打包、TTS proxy</small></div>
+            <div class="box">React Router 7<small>SPA 路由</small></div>
+            <div class="box">Tailwind CSS 4<small>長者友善 UI</small></div>
+            <div class="box">Capacitor 8<small>iOS 原生殼</small></div>
+            <div class="box">Service Worker<small>PWA 展示支援</small></div>
+          </div>
+        </div>
+      </section>
+      <aside class="rail">
+        <p class="rail-title">橫切關注</p>
+        <div class="rail-panel">
+          <h3>安全治理</h3>
+          <span class="pill hot">本機影像推論</span>
+          <span class="pill">疼痛 ≥ 7 停機</span>
+          <span class="pill">安全角度範圍</span>
+          <span class="pill">不硬套 AI</span>
+        </div>
+        <div class="rail-panel">
+          <h3>可及性</h3>
+          <span class="pill hot">大字級</span>
+          <span class="pill">語音說明</span>
+          <span class="pill">台語偏好</span>
+          <span class="pill">觸控友善</span>
+        </div>
+        <div class="rail-panel">
+          <h3>外部服務</h3>
+          <span class="pill hot">MediaPipe CDN</span>
+          <span class="pill">雅婷 TTS</span>
+          <span class="pill">OpenAI TTS</span>
+          <span class="pill">未來雲端同步</span>
+        </div>
+      </aside>
+      <section class="flow-board">
+        <p class="flow-title">Runtime Pipeline</p>
+        <div class="pipeline">
+          <div class="step"><div class="num">1</div><strong>長者按開始</strong><span>RehabSession 啟動 active 狀態</span></div>
+          <div class="step"><div class="num">2</div><strong>相機擷取</strong><span>getUserMedia 前置鏡頭 1280×720</span></div>
+          <div class="step"><div class="num">3</div><strong>模型推論</strong><span>TensorFlow.js estimatePoses 每幀輸出 keypoints</span></div>
+          <div class="step"><div class="num">4</div><strong>角度計算</strong><span>三點關節夾角、可信度過濾、左右鏡像</span></div>
+          <div class="step"><div class="num">5</div><strong>處方比對</strong><span>targetAngle、tolerance、holdSeconds</span></div>
+          <div class="step"><div class="num">6</div><strong>即時回饋</strong><span>骨架、儀表、遊戲、語音提示同步更新</span></div>
+          <div class="step"><div class="num">7</div><strong>安全停機</strong><span>疼痛過高或 guided alerts 進入照護通知</span></div>
+          <div class="step"><div class="num">8</div><strong>紀錄閉環</strong><span>localStorage 訓練紀錄供家屬與醫師端讀取</span></div>
+        </div>
+        <p class="footer-note">此圖對應目前專案原始碼：核心推論在 `usePoseDetection`，復健狀態機在 `RehabSession`，資料暫存於 `sessionStore`、`guidedSessionStore`、`prescriptionStore`、`progressStore` 與 `messageStore`。目前為競賽展示與概念驗證原型，非正式醫療器材。</p>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

@@ -424,8 +424,8 @@ export default function GuidedRehabSession() {
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br ${theme.bg} p-5 text-slate-900`}>
-      <div className="mx-auto flex h-[calc(100dvh-2.5rem)] max-w-7xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-xl">
+    <div className="min-h-screen p-5 text-slate-900" style={{ background: '#FBF4EA' }}>
+      <div className="mx-auto flex min-h-[calc(100dvh-2.5rem)] max-w-7xl flex-col rounded-[2rem] bg-white shadow-xl">
         <header className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <button
             type="button"
@@ -460,9 +460,9 @@ export default function GuidedRehabSession() {
           {safetyLabel.label}：{safetyLabel.description} {safetyLabel.stopRule}
         </div>
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 gap-5 overflow-hidden p-5 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className="flex min-h-0 flex-col gap-5">
-            <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-[2rem] bg-slate-900 text-white">
+        <main className="grid grid-cols-1 gap-5 p-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <section className="flex flex-col gap-5">
+            <div className="relative flex min-h-[340px] items-center justify-center overflow-hidden rounded-[2rem] text-white" style={{ background: '#26201A' }}>
               <div className="absolute inset-0 opacity-30">
                 <div className="absolute left-12 top-12 h-44 w-44 rounded-full bg-blue-400 blur-3xl" />
                 <div className="absolute bottom-8 right-16 h-52 w-52 rounded-full bg-emerald-300 blur-3xl" />
@@ -490,7 +490,7 @@ export default function GuidedRehabSession() {
             </div>
           </section>
 
-          <section className="flex min-h-0 flex-col gap-4 overflow-hidden">
+          <section className="flex flex-col gap-4">
             <div className="rounded-[2rem] border border-slate-100 bg-slate-50 p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -505,7 +505,7 @@ export default function GuidedRehabSession() {
               </div>
               <div className="mt-4 h-4 overflow-hidden rounded-full bg-white">
                 <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-400"
+                  className="h-full rounded-full bg-gradient-to-r from-[#0E7A6B] to-emerald-400"
                   animate={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -524,7 +524,7 @@ export default function GuidedRehabSession() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-[2rem] border border-slate-100 bg-white p-5">
+            <div className="rounded-[2rem] border border-slate-100 bg-white p-5">
               <h3 className="text-2xl font-black text-slate-800">注意事項</h3>
               <div className="mt-3 space-y-3">
                 {[...config.focusPoints, ...guidance.precautions.slice(0, 2)].map((point) => (

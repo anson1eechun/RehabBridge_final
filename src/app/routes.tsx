@@ -8,6 +8,8 @@ import DoctorPortal from './pages/DoctorPortal';
 import FamilyDashboard from './pages/FamilyDashboard';
 import GuidedRehabSession from './pages/GuidedRehabSession';
 import PatientPortal from './pages/PatientPortal';
+import MemoryGallery from './pages/MemoryGallery';
+import RehabRecords from './pages/RehabRecords';
 import RehabSession from './pages/RehabSession';
 import RoleSelect from './pages/RoleSelect';
 import { ChatWidget } from './components/ChatWidget';
@@ -21,10 +23,12 @@ const MainLayout = () => {
   const location = useLocation();
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const showChatButton =
+  const chatEnabled =
     location.pathname.startsWith('/patient') ||
     location.pathname === '/family' ||
     location.pathname === '/doctor';
+  // 主頁 (/patient) 已有「聊天室」功能格，隱藏浮球避免重複；其餘子頁仍顯示浮球。
+  const showChatButton = chatEnabled && location.pathname !== '/patient';
   const isEntryPage = location.pathname === '/';
 
   useEffect(() => {
@@ -33,14 +37,14 @@ const MainLayout = () => {
 
   useEffect(() => {
     const openChat = () => {
-      if (showChatButton) {
+      if (chatEnabled) {
         setIsChatOpen(true);
       }
     };
 
     window.addEventListener('rehabbridge:open-chat', openChat);
     return () => window.removeEventListener('rehabbridge:open-chat', openChat);
-  }, [showChatButton]);
+  }, [chatEnabled]);
 
   const roleInfo = useMemo((): { role: MessageRole; id: string; label: string } => {
     if (location.pathname.includes('/doctor')) {
@@ -174,6 +178,8 @@ export const router = createBrowserRouter([
       { path: 'patient', Component: PatientPortal },
       { path: 'patient/rehab/:exerciseId', Component: RehabSession },
       { path: 'patient/guided/:prescriptionId', Component: GuidedRehabSession },
+      { path: 'patient/memories', Component: MemoryGallery },
+      { path: 'patient/records', Component: RehabRecords },
       { path: 'family', Component: FamilyDashboard },
       { path: 'doctor', Component: DoctorPortal },
       { path: 'blueprint', Component: Blueprint },

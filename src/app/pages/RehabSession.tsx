@@ -929,9 +929,9 @@ export default function RehabSession() {
   };
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#111D2D' }}>
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden flex flex-col" style={{ background: '#26201A' }}>
       {/* Top Navigation Bar（語音語言僅於長者首頁選定） */}
-      <div style={{ background: '#1A2840', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ background: '#332A20', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
       <div className="flex items-center justify-between px-5 py-4">
         <button
           onClick={() => { setIsActive(false); navigate('/patient'); }}
@@ -1080,7 +1080,7 @@ export default function RehabSession() {
       <div className="flex-1 flex gap-0 overflow-hidden">
 
         {isGameFocus && (
-          <div className="flex-1 min-w-0 bg-[#101C2B] p-4">
+          <div className="flex-1 min-w-0 bg-[#1B1610] p-4">
             <RehabGamePanel {...gamePanelProps} variant="hero" />
           </div>
         )}
@@ -1123,7 +1123,7 @@ export default function RehabSession() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 className="absolute inset-0 z-20 flex flex-col items-center justify-center"
-                style={{ background: '#0D1B2A' }}
+                style={{ background: '#26201A' }}
               >
                 <div className="w-24 h-24 border-[5px] border-blue-400 border-t-transparent rounded-full animate-spin mb-8" />
                 <p style={{ color: 'white', fontSize: patientPx(28), fontWeight: 700 }}>正在載入姿態偵測模型…</p>
@@ -1145,8 +1145,8 @@ export default function RehabSession() {
                 style={{
                   background:
                     status === 'detecting'
-                      ? 'rgba(13, 27, 42, 0.94)'
-                      : '#0D1B2A',
+                      ? 'rgba(38, 32, 26, 0.94)'
+                      : '#26201A',
                   backdropFilter: status === 'detecting' ? 'blur(2px)' : undefined,
                 }}
               >
@@ -1265,9 +1265,9 @@ export default function RehabSession() {
                       onClick={handleListenGoalBrief}
                       className="w-full py-4 rounded-2xl border-2 flex items-center justify-center gap-2"
                       style={{
-                        borderColor: 'rgba(129,212,250,0.55)',
-                        background: 'rgba(3,169,244,0.12)',
-                        color: '#B3E5FC',
+                        borderColor: 'rgba(244,167,42,0.55)',
+                        background: 'rgba(244,167,42,0.14)',
+                        color: '#F4C772',
                         fontSize: 'clamp(1.15rem, 3.2vw, 1.4rem)',
                         fontWeight: 800,
                       }}
@@ -1280,7 +1280,7 @@ export default function RehabSession() {
                     onClick={handleStart}
                     className="w-full py-6 sm:py-7 rounded-2xl text-white flex items-center justify-center gap-3 shadow-lg"
                     style={{
-                      background: 'linear-gradient(135deg, #42A5F5, #1976D2)',
+                      background: 'linear-gradient(135deg, #0E7A6B, #0B6051)',
                       fontSize: 'clamp(1.45rem, 4vw, 1.9rem)',
                       fontWeight: 800,
                     }}
